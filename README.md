@@ -2,7 +2,7 @@
 
 Cloudflare Workers API for Meme Manager - 一个轻量级、高性能的表情包管理云端 API
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR-USERNAME/meme-api)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/meme-manager/meme-api)
 
 > **注意**: 请将上面的 `YOUR-USERNAME` 替换为你的 GitHub 用户名
 
