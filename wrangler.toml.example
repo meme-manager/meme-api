@@ -15,6 +15,8 @@ ENVIRONMENT = "development"
 [[d1_databases]]
 binding = "DB"
 database_name = "meme-db"
+migrations_dir = "migrations"
+database_id = ""
 
 # R2 存储绑定
 [[r2_buckets]]
