@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { success, error, notFound } from '../utils/response';
-import { requireAuth } from '../middleware/auth';
+import { authMiddleware, requireAuth } from '../middleware/auth';
 import { generateUUID } from '../utils/helpers';
 
 const r2 = new Hono<AppEnv>();
@@ -55,7 +55,7 @@ r2.get('/*', async (c) => {
  * Headers: Content-Type: image/*
  * Body: Binary data
  */
-r2.post('/upload', async (c) => {
+r2.post('/upload', authMiddleware, async (c) => {
   const user = requireAuth(c);
   
   try {

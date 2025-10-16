@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv, SyncPullRequest, SyncPushRequest, Asset, Tag, AssetTag, UserSetting } from '../types';
 import { success, error } from '../utils/response';
-import { requireAuth } from '../middleware/auth';
+import { authMiddleware, requireAuth } from '../middleware/auth';
 import { safeJsonParse, validateRequired, now } from '../utils/helpers';
 import { checkUserQuota } from '../utils/rateLimit';
 
@@ -11,7 +11,7 @@ const sync = new Hono<AppEnv>();
  * 拉取云端更新
  * POST /sync/pull
  */
-sync.post('/pull', async (c) => {
+sync.post('/pull', authMiddleware, async (c) => {
   const user = requireAuth(c);
   
   const body = await safeJsonParse<SyncPullRequest>(c.req.raw);
@@ -79,7 +79,7 @@ sync.post('/pull', async (c) => {
  * 推送本地更新
  * POST /sync/push
  */
-sync.post('/push', async (c) => {
+sync.post('/push', authMiddleware, async (c) => {
   const user = requireAuth(c);
   
   const body = await safeJsonParse<SyncPushRequest>(c.req.raw);

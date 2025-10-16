@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv, CreateShareRequest, Share, Asset } from '../types';
 import { success, error, notFound } from '../utils/response';
-import { requireAuth } from '../middleware/auth';
+import { authMiddleware, requireAuth } from '../middleware/auth';
 import { safeJsonParse, validateRequired, now, generateShortId, hashPassword, verifyPassword } from '../utils/helpers';
 import { checkUserQuota, checkDailyShareLimit, checkShareViewLimit, getClientIp } from '../utils/rateLimit';
 
@@ -11,7 +11,7 @@ const share = new Hono<AppEnv>();
  * 创建分享
  * POST /share/create
  */
-share.post('/create', async (c) => {
+share.post('/create', authMiddleware, async (c) => {
   const user = requireAuth(c);
   
   const body = await safeJsonParse<CreateShareRequest>(c.req.raw);
@@ -244,7 +244,7 @@ share.get('/:shareId', async (c) => {
  * 获取我的分享列表
  * GET /share/list
  */
-share.get('/list', async (c) => {
+share.get('/list', authMiddleware, async (c) => {
   const user = requireAuth(c);
   
   try {
@@ -274,7 +274,7 @@ share.get('/list', async (c) => {
  * 删除分享
  * DELETE /share/:shareId
  */
-share.delete('/:shareId', async (c) => {
+share.delete('/:shareId', authMiddleware, async (c) => {
   const user = requireAuth(c);
   const shareId = c.req.param('shareId');
   
@@ -322,7 +322,7 @@ share.delete('/:shareId', async (c) => {
  * 导入分享(统计)
  * POST /share/:shareId/import
  */
-share.post('/:shareId/import', async (c) => {
+share.post('/:shareId/import', authMiddleware, async (c) => {
   const shareId = c.req.param('shareId');
   
   try {
