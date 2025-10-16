@@ -14,6 +14,7 @@ ENVIRONMENT = "production"
 [[d1_databases]]
 binding = "DB"
 database_name = "meme-db"
+migrations_dir = "migrations"
 # database_id 将在部署时自动创建并填入
 
 # R2 存储绑定
