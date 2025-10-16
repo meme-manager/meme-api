@@ -250,72 +250,61 @@ sync.post('/push', authMiddleware, async (c) => {
       }
     }
     
-    // 批量执行
+    // 逐个执行（改为非批量，方便调试）
     if (statements.length > 0) {
-      console.log(`[Sync] 🔄 开始执行 ${statements.length} 条 SQL 语句...`);
+      console.log(`[Sync] 🔄 开始逐个执行 ${statements.length} 条 SQL 语句...`);
       
-      // 测试：先尝试单独执行第一条 SQL
-      if (body.assets && body.assets.length > 0 && statements.length > 0) {
-        console.log(`[Sync] 🧪 测试：单独执行第一条 SQL...`);
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (let i = 0; i < statements.length; i++) {
+        const stmt = statements[i];
+        console.log(`[Sync] 执行 SQL #${i + 1}/${statements.length}...`);
+        
         try {
-          const testResult = await statements[0].run();
-          console.log(`[Sync] 🧪 测试结果:`, JSON.stringify({
-            success: testResult.success,
-            meta: testResult.meta,
-            error: testResult.error
-          }));
-        } catch (testError) {
-          console.error(`[Sync] 🧪 测试失败:`, testError);
+          const result = await stmt.run();
+          
+          if (result.success) {
+            successCount++;
+            const rowsAffected = result.meta?.changes || 0;
+            console.log(`[Sync] ✅ SQL #${i + 1} 成功: rowsAffected=${rowsAffected}`);
+            
+            // 如果是第一条，打印详细信息
+            if (i === 0) {
+              console.log(`[Sync] 🔍 第一条 SQL 的详细结果:`, {
+                success: result.success,
+                meta: result.meta,
+                duration: result.meta?.duration
+              });
+            }
+          } else {
+            failCount++;
+            console.error(`[Sync] ❌ SQL #${i + 1} 失败: success=${result.success}`);
+          }
+        } catch (error) {
+          failCount++;
+          console.error(`[Sync] ❌ SQL #${i + 1} 异常:`, error);
+          console.error(`[Sync] 错误详情:`, {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined
+          });
         }
       }
       
-      try {
-        const batchResult = await c.env.DB.batch(statements);
-        console.log(`[Sync] 🔍 batchResult 类型:`, typeof batchResult, Array.isArray(batchResult));
-        console.log(`[Sync] 🔍 batchResult 长度:`, batchResult?.length);
+      console.log(`[Sync] 执行完成: 成功=${successCount}, 失败=${failCount}`);
+      
+      // 验证数据是否真的插入了
+      if (body.assets && body.assets.length > 0) {
+        const verifyCount = await c.env.DB.prepare(`
+          SELECT COUNT(*) as count FROM assets WHERE user_id = ?
+        `).bind(user.user_id).first<{ count: number }>();
+        console.log(`[Sync] 🔍 验证：D1 中现在有 ${verifyCount?.count || 0} 个资产（user_id=${user.user_id}）`);
         
-        // 检查每条 SQL 的执行结果
-        let successCount = 0;
-        let failCount = 0;
-        
-        if (Array.isArray(batchResult)) {
-          batchResult.forEach((r, idx) => {
-            console.log(`[Sync] 🔍 SQL #${idx + 1} 结果:`, JSON.stringify({
-              success: r.success,
-              error: r.error,
-              meta: r.meta,
-              results: r.results?.length
-            }));
-            
-            if (r.success) {
-              successCount++;
-              const rowsAffected = r.meta?.changes || r.meta?.rows_written || 0;
-              console.log(`[Sync] ✅ SQL #${idx + 1} 成功: rowsAffected=${rowsAffected}`);
-            } else {
-              failCount++;
-              console.error(`[Sync] ❌ SQL #${idx + 1} 失败:`, r.error);
-            }
-          });
-        }
-        
-        console.log(`[Sync] 批量执行结果: 成功=${successCount}, 失败=${failCount}`);
-        
-        // 验证数据是否真的插入了
-        if (body.assets && body.assets.length > 0) {
-          const verifyCount = await c.env.DB.prepare(`
-            SELECT COUNT(*) as count FROM assets WHERE user_id = ?
-          `).bind(user.user_id).first<{ count: number }>();
-          console.log(`[Sync] 🔍 验证：D1 中现在有 ${verifyCount?.count || 0} 个资产（user_id=${user.user_id}）`);
-          
-          // 查看刚插入的资产
-          const recentAssets = await c.env.DB.prepare(`
-            SELECT id, file_name, r2_key FROM assets WHERE user_id = ? ORDER BY created_at DESC LIMIT 3
-          `).bind(user.user_id).all();
-          console.log(`[Sync] 🔍 最近的资产:`, JSON.stringify(recentAssets.results));
-        }
-      } catch (batchError) {
-        console.error(`[Sync] ❌ 批量执行异常:`, batchError);
-        throw batchError;
+        // 查看刚插入的资产
+        const recentAssets = await c.env.DB.prepare(`
+          SELECT id, file_name, r2_key FROM assets WHERE user_id = ? ORDER BY created_at DESC LIMIT 3
+        `).bind(user.user_id).all();
+        console.log(`[Sync] 🔍 最近的资产:`, recentAssets.results);
       }
     } else {
       console.log(`[Sync] ⏭️  没有数据需要推送`);
