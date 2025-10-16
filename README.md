@@ -207,13 +207,14 @@ Content-Type: application/json
 
 ### 配置文件
 
-项目包含三个配置文件:
-- **`wrangler.toml`**: 通用配置文件,用于一键部署,已提交到 Git
-- **`wrangler.toml.example`**: 配置模板,用于手动部署
-- **`wrangler.local.toml`**: 本地配置文件,包含你的资源 ID,已加入 `.gitignore`
+项目包含以下配置文件:
+- **`wrangler.jsonc`**: 通用配置文件（JSON 格式），用于一键部署，已提交到 Git
+- **`wrangler.toml.example`**: 配置模板（TOML 格式），用于手动部署参考
+- **`wrangler.local.toml`**: 本地配置文件，包含你的资源 ID，已加入 `.gitignore`
 
-**一键部署**: 使用 `wrangler.toml`,Cloudflare 自动创建资源和分配 ID  
-**手动部署**: 运行 `./deploy.sh`,自动从模板生成 `wrangler.local.toml` 并填入资源 ID
+**配置格式说明**:
+- `wrangler.jsonc` 不包含 `database_id`，Cloudflare 会在部署时自动创建 D1 数据库并填入真实 ID
+- 手动部署时，`./deploy.sh` 会从模板生成 `wrangler.local.toml` 并填入资源 ID
 
 ### 环境变量
 
