@@ -105,32 +105,66 @@ r2.post('/upload', authMiddleware, async (c) => {
 });
 
 /**
- * 检查 R2 文件是否存在
- * POST /r2/check
+ * 批量检查 R2 文件是否存在
+ * POST /r2/batch-check
  */
-r2.post('/check', authMiddleware, async (c) => {
+r2.post('/batch-check', authMiddleware, async (c) => {
   const user = requireAuth(c);
   
   try {
-    const body = await c.req.json<{ r2_key: string }>();
-    const r2Key = body.r2_key;
+    const body = await c.req.json<{ r2_keys: string[] }>();
+    const r2Keys = body.r2_keys;
     
-    if (!r2Key) {
-      return error('缺少 r2_key 参数');
+    if (!r2Keys || !Array.isArray(r2Keys)) {
+      return error('缺少 r2_keys 参数或格式错误');
     }
     
-    console.log(`[R2] 检查文件: ${r2Key}`);
+    if (r2Keys.length === 0) {
+      return success({ results: [] });
+    }
     
-    const object = await c.env.R2.head(r2Key);
+    if (r2Keys.length > 100) {
+      return error('单次最多检查 100 个文件');
+    }
     
-    return success({
-      exists: object !== null,
-      size: object?.size,
-      uploaded: object?.uploaded
+    console.log(`[R2] 批量检查文件: ${r2Keys.length} 个`);
+    
+    // 并发检查所有文件
+    const results = await Promise.all(
+      r2Keys.map(async (r2Key) => {
+        try {
+          const object = await c.env.R2.head(r2Key);
+          return {
+            r2_key: r2Key,
+            exists: object !== null,
+            size: object?.size,
+            uploaded: object?.uploaded
+          };
+        } catch (err) {
+          console.error(`[R2] 检查文件失败: ${r2Key}`, err);
+          return {
+            r2_key: r2Key,
+            exists: false,
+            error: err instanceof Error ? err.message : '未知错误'
+          };
+        }
+      })
+    );
+    
+    const existsCount = results.filter(r => r.exists).length;
+    console.log(`[R2] 批量检查完成: ${existsCount}/${r2Keys.length} 存在`);
+    
+    return success({ 
+      results,
+      summary: {
+        total: r2Keys.length,
+        exists: existsCount,
+        missing: r2Keys.length - existsCount
+      }
     });
   } catch (err) {
-    console.error('[R2] 检查文件失败:', err);
-    return success({ exists: false });
+    console.error('[R2] 批量检查失败:', err);
+    return error('批量检查失败', 500);
   }
 });
 

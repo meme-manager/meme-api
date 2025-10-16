@@ -11,6 +11,7 @@ import sync from './routes/sync';
 import share from './routes/share';
 import quota from './routes/quota';
 import r2 from './routes/r2';
+import consistency from './routes/consistency';
 
 const app = new Hono<AppEnv>();
 
@@ -50,6 +51,7 @@ app.use('/share/create', authMiddleware);
 app.use('/share/list', authMiddleware);
 app.use('/share/:shareId', authMiddleware); // DELETE 需要认证
 app.use('/quota/*', authMiddleware);
+app.use('/consistency/*', authMiddleware);
 
 // 限流中间件（应用到所有路由）
 app.use('/*', rateLimitMiddleware);
@@ -60,6 +62,7 @@ app.route('/sync', sync);
 app.route('/share', share);
 app.route('/quota', quota);
 app.route('/r2', r2);
+app.route('/consistency', consistency);
 
 // 分享预览页面 (GET /s/:shareId)
 app.get('/s/:shareId', async (c) => {
