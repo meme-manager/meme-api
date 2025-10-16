@@ -14,11 +14,12 @@
   },
   
   // D1 数据库绑定
-  // 注意: database_id 会在部署时自动创建和填充
+  // 注意: database_id 留空,Cloudflare 会在部署时自动创建数据库并填充 ID
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "meme-db",
+      "database_id": "",
       "migrations_dir": "migrations"
     }
   ],

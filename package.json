@@ -12,7 +12,8 @@
     "db:migrate": "wrangler d1 execute meme-db --file=./migrations/0001_initial.sql --remote",
     "db:migrate:local": "wrangler d1 execute meme-db --file=./migrations/0001_initial.sql --local",
     "tail": "wrangler tail",
-    "build": "echo 'No build step needed'"
+    "build": "echo 'No build step needed'",
+    "cf:deploy": "npm run db:migrations:apply && wrangler deploy -c wrangler.jsonc"
   },
   "cloudflare": {
     "bindings": {
