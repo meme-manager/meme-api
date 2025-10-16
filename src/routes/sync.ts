@@ -146,6 +146,12 @@ sync.post('/push', authMiddleware, async (c) => {
         
         console.log(`[Sync] 推送资产: ${asset.id}, r2_key: ${asset.r2_key || 'null'}`);
         
+        // 检查是否所有必需字段都有值
+        if (!asset.r2_key) {
+          console.error(`[Sync] ❌ 跳过没有 r2_key 的资产: ${asset.id}`);
+          continue;
+        }
+        
         statements.push(
           c.env.DB.prepare(`
             INSERT INTO assets (
@@ -169,7 +175,6 @@ sync.post('/push', authMiddleware, async (c) => {
               updated_at = excluded.updated_at,
               deleted = excluded.deleted,
               deleted_at = excluded.deleted_at
-            WHERE excluded.updated_at > assets.updated_at
           `).bind(
             asset.id, asset.user_id, asset.content_hash, asset.file_name,
             asset.mime_type, asset.file_size, asset.width, asset.height,
@@ -184,11 +189,15 @@ sync.post('/push', authMiddleware, async (c) => {
     
     // 2. 推送标签
     if (body.tags && body.tags.length > 0) {
+      console.log(`[Sync] 准备推送 ${body.tags.length} 个标签`);
+      
       for (const tag of body.tags) {
         if (tag.user_id !== user.user_id) {
           console.warn(`[Sync] 跳过非本用户标签: ${tag.id}`);
           continue;
         }
+        
+        console.log(`[Sync] 推送标签: ${tag.id}, name: ${tag.name}`);
         
         statements.push(
           c.env.DB.prepare(`
@@ -199,7 +208,6 @@ sync.post('/push', authMiddleware, async (c) => {
               color = excluded.color,
               use_count = excluded.use_count,
               updated_at = excluded.updated_at
-            WHERE excluded.updated_at > tags.updated_at
           `).bind(tag.id, tag.user_id, tag.name, tag.color, tag.use_count, tag.created_at, tag.updated_at)
         );
         syncedCount++;
@@ -221,6 +229,8 @@ sync.post('/push', authMiddleware, async (c) => {
     
     // 4. 推送设置
     if (body.settings && body.settings.length > 0) {
+      console.log(`[Sync] 准备推送 ${body.settings.length} 个设置`);
+      
       for (const setting of body.settings) {
         if (setting.user_id !== user.user_id) {
           console.warn(`[Sync] 跳过非本用户设置: ${setting.key}`);
@@ -234,7 +244,6 @@ sync.post('/push', authMiddleware, async (c) => {
             ON CONFLICT(user_id, key) DO UPDATE SET
               value = excluded.value,
               updated_at = excluded.updated_at
-            WHERE excluded.updated_at > user_settings.updated_at
           `).bind(setting.user_id, setting.key, setting.value, setting.updated_at)
         );
         syncedCount++;
@@ -244,15 +253,69 @@ sync.post('/push', authMiddleware, async (c) => {
     // 批量执行
     if (statements.length > 0) {
       console.log(`[Sync] 🔄 开始执行 ${statements.length} 条 SQL 语句...`);
-      const batchResult = await c.env.DB.batch(statements);
-      console.log(`[Sync] ✅ 批量执行完成，结果:`, batchResult.map(r => ({ success: r.success, meta: r.meta })));
       
-      // 验证数据是否真的插入了
-      if (body.assets && body.assets.length > 0) {
-        const verifyCount = await c.env.DB.prepare(`
-          SELECT COUNT(*) as count FROM assets WHERE user_id = ?
-        `).bind(user.user_id).first<{ count: number }>();
-        console.log(`[Sync] 🔍 验证：D1 中现在有 ${verifyCount?.count || 0} 个资产`);
+      // 测试：先尝试单独执行第一条 SQL
+      if (body.assets && body.assets.length > 0 && statements.length > 0) {
+        console.log(`[Sync] 🧪 测试：单独执行第一条 SQL...`);
+        try {
+          const testResult = await statements[0].run();
+          console.log(`[Sync] 🧪 测试结果:`, JSON.stringify({
+            success: testResult.success,
+            meta: testResult.meta,
+            error: testResult.error
+          }));
+        } catch (testError) {
+          console.error(`[Sync] 🧪 测试失败:`, testError);
+        }
+      }
+      
+      try {
+        const batchResult = await c.env.DB.batch(statements);
+        console.log(`[Sync] 🔍 batchResult 类型:`, typeof batchResult, Array.isArray(batchResult));
+        console.log(`[Sync] 🔍 batchResult 长度:`, batchResult?.length);
+        
+        // 检查每条 SQL 的执行结果
+        let successCount = 0;
+        let failCount = 0;
+        
+        if (Array.isArray(batchResult)) {
+          batchResult.forEach((r, idx) => {
+            console.log(`[Sync] 🔍 SQL #${idx + 1} 结果:`, JSON.stringify({
+              success: r.success,
+              error: r.error,
+              meta: r.meta,
+              results: r.results?.length
+            }));
+            
+            if (r.success) {
+              successCount++;
+              const rowsAffected = r.meta?.changes || r.meta?.rows_written || 0;
+              console.log(`[Sync] ✅ SQL #${idx + 1} 成功: rowsAffected=${rowsAffected}`);
+            } else {
+              failCount++;
+              console.error(`[Sync] ❌ SQL #${idx + 1} 失败:`, r.error);
+            }
+          });
+        }
+        
+        console.log(`[Sync] 批量执行结果: 成功=${successCount}, 失败=${failCount}`);
+        
+        // 验证数据是否真的插入了
+        if (body.assets && body.assets.length > 0) {
+          const verifyCount = await c.env.DB.prepare(`
+            SELECT COUNT(*) as count FROM assets WHERE user_id = ?
+          `).bind(user.user_id).first<{ count: number }>();
+          console.log(`[Sync] 🔍 验证：D1 中现在有 ${verifyCount?.count || 0} 个资产（user_id=${user.user_id}）`);
+          
+          // 查看刚插入的资产
+          const recentAssets = await c.env.DB.prepare(`
+            SELECT id, file_name, r2_key FROM assets WHERE user_id = ? ORDER BY created_at DESC LIMIT 3
+          `).bind(user.user_id).all();
+          console.log(`[Sync] 🔍 最近的资产:`, JSON.stringify(recentAssets.results));
+        }
+      } catch (batchError) {
+        console.error(`[Sync] ❌ 批量执行异常:`, batchError);
+        throw batchError;
       }
     } else {
       console.log(`[Sync] ⏭️  没有数据需要推送`);
