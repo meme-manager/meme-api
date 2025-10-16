@@ -4,20 +4,18 @@ Cloudflare Workers API for Meme Manager - 一个轻量级、高性能的表情�
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/meme-manager/meme-api)
 
-> **注意**: 请将上面的 `YOUR-USERNAME` 替换为你的 GitHub 用户名
-
 ## 🚀 快速部署
 
 ### 一键部署 (推荐)
 
 点击上面的 **Deploy to Cloudflare** 按钮,Cloudflare 会自动:
 
-1. **Fork 仓库** - 复制代码到你的 GitHub 账户
+1. **Fork 仓库** - 在你的 GitHub 账户创建新仓库
 2. **创建资源** - 自动创建 D1 数据库和 R2 存储桶
-3. **配置绑定** - 自动绑定资源到 Worker
-4. **运行迁移** - 执行数据库迁移脚本
-5. **部署上线** - 部署到 Cloudflare 网络
-6. **设置 CI/CD** - 配置自动部署流程
+3. **配置绑定** - 自动绑定资源到 Worker 并更新配置文件
+4. **构建部署** - 运行 `npm run deploy`,自动执行数据库迁移并部署 Worker
+5. **配置 CI/CD** - 设置 Workers Builds,每次 push 自动重新部署
+6. **预览功能** - 为 Pull Request 自动生成预览 URL
 
 **你只需要**:
 - 设置 `JWT_SECRET` 密钥(部署时会提示如何生成)
