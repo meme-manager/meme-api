@@ -102,12 +102,16 @@ sync.post('/push', authMiddleware, async (c) => {
     
     // 1. 推送资产
     if (body.assets && body.assets.length > 0) {
+      console.log(`[Sync] 准备推送 ${body.assets.length} 个资产`);
+      
       for (const asset of body.assets) {
         // 验证资产属于当前用户
         if (asset.user_id !== user.user_id) {
           console.warn(`[Sync] 跳过非本用户资产: ${asset.id}`);
           continue;
         }
+        
+        console.log(`[Sync] 推送资产: ${asset.id}, r2_key: ${asset.r2_key || 'null'}`);
         
         statements.push(
           c.env.DB.prepare(`
@@ -231,7 +235,9 @@ sync.post('/push', authMiddleware, async (c) => {
     
   } catch (err) {
     console.error('[Sync] 推送失败:', err);
-    return error('推送失败', 500);
+    const errorMessage = err instanceof Error ? err.message : '推送失败';
+    console.error('[Sync] 错误详情:', errorMessage);
+    return error(`推送失败: ${errorMessage}`, 500);
   }
 });
 
