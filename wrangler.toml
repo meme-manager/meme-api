@@ -13,10 +13,11 @@ workers_dev = true
 ENVIRONMENT = "production"
 
 # D1 数据库绑定
-# Cloudflare 网页版部署时会自动创建数据库并绑定
+# database_id 会在首次部署时由脚本自动填充
 [[d1_databases]]
 binding = "DB"
 database_name = "meme-db"
+database_id = ""
 migrations_dir = "migrations"
 
 # R2 存储绑定
