@@ -1,0 +1,23 @@
+name = "meme-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Workers 配置
+workers_dev = true
+
+# 环境变量
+[vars]
+ENVIRONMENT = "production"
+
+# D1 数据库绑定
+# 一键部署时，Cloudflare 会自动创建数据库并替换 database_id
+[[d1_databases]]
+binding = "DB"
+database_name = "meme-db"
+database_id = "00000000-0000-0000-0000-000000000000" # Cloudflare 会在一键部署时自动创建并替换
+
+# R2 存储绑定
+# 一键部署时，Cloudflare 会自动创建存储桶
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "meme-storage"

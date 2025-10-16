@@ -1,8 +1,10 @@
 # Meme Manager - Workers API
 
-Cloudflare Workers API for Meme Manager
+Cloudflare Workers API for Meme Manager - 一个轻量级、高性能的表情包管理云端 API
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/meme-manager/meme-api)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR-USERNAME/meme-api)
+
+> **注意**: 请将上面的 `YOUR-USERNAME` 替换为你的 GitHub 用户名
 
 ## 🚀 快速部署
 
@@ -19,11 +21,18 @@ Cloudflare Workers API for Meme Manager
 
 **你只需要**:
 - 设置 `JWT_SECRET` 密钥(部署时会提示如何生成)
+  ```bash
+  # 生成方法:
+  openssl rand -hex 32
+  # 或
+  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  ```
 - 等待几分钟完成部署
 
 **工作原理**:
-- Cloudflare 读取 `wrangler.json` 配置文件
+- Cloudflare 读取 `wrangler.toml` 配置文件
 - 自动创建所需的 D1 数据库和 R2 存储桶
+- 自动为资源分配 ID 并绑定到 Worker
 - 运行 `package.json` 中的 `deploy` 脚本
 - `deploy` 脚本会先执行数据库迁移,然后部署 Worker
 - **自动配置 CI/CD**: 每次 push 到 main 分支会自动重新部署
@@ -38,12 +47,12 @@ Cloudflare Workers API for Meme Manager
 
 脚本会自动:
 - 创建 D1 数据库和 R2 存储桶
-- 从 `wrangler.toml.example` 生成配置文件
+- 从 `wrangler.toml.example` 生成 `wrangler.local.toml` 配置文件
 - 自动填入资源 ID
 - 运行数据库迁移
 - 部署到 Cloudflare Workers
 
-**注意**: `wrangler.toml` 包含你的资源 ID,已加入 `.gitignore`,不会被提交到 Git
+**注意**: `wrangler.local.toml` 包含你的资源 ID,已加入 `.gitignore`,不会被提交到 Git
 
 ## 📖 功能特性
 
@@ -115,6 +124,14 @@ Cloudflare 自动检测到更新
 npm install
 ```
 
+### 初始化本地数据库
+
+首次运行需要先初始化本地数据库：
+
+```bash
+npm run db:migrate:local
+```
+
 ### 启动开发服务器
 
 ```bash
@@ -122,6 +139,11 @@ npm run dev
 ```
 
 访问 http://localhost:8787
+
+本地开发环境特点：
+- 使用本地 SQLite 数据库（不需要连接 Cloudflare）
+- 使用 R2 模拟器
+- 数据持久化在 `.wrangler/state/` 目录
 
 ### 数据库迁移
 
@@ -133,18 +155,67 @@ npm run db:migrate:local
 npm run db:migrate
 ```
 
-## 📚 API 文档
+## 📚 API 端点
 
-详细的 API 文档请查看 [API.md](./API.md)
+### 健康检查
+
+```bash
+GET /health
+```
+
+返回：
+```json
+{"status":"ok","timestamp":1234567890}
+```
+
+### 设备注册/登录
+
+```bash
+POST /auth/device-register
+Content-Type: application/json
+
+{
+  "device_name": "我的设备",
+  "device_type": "desktop",
+  "platform": "macos"
+}
+```
+
+返回：
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiJ9...",
+    "user_id": "uuid",
+    "device_id": "uuid",
+    "expires_at": 1234567890
+  },
+  "message": "注册成功"
+}
+```
+
+### 其他 API
+
+- `POST /sync/pull` - 拉取云端数据
+- `POST /sync/push` - 推送本地数据
+- `POST /share/create` - 创建分享
+- `GET /s/:shareId` - 查看分享页面
+- `GET /quota/info` - 查看配额信息
+
+完整的 API 文档请查看源代码 `src/routes/` 目录
 
 ## 🔧 配置
 
 ### 配置文件
 
-项目使用 `wrangler.toml.example` 作为配置模板:
-- **不要直接修改** `wrangler.toml.example`
-- 部署脚本会自动从模板创建 `wrangler.toml`
-- `wrangler.toml` 包含你的资源 ID,不会被提交到 Git
+项目包含三个配置文件:
+- **`wrangler.toml`**: 通用配置文件,用于一键部署,已提交到 Git
+- **`wrangler.toml.example`**: 配置模板,用于手动部署
+- **`wrangler.local.toml`**: 本地配置文件,包含你的资源 ID,已加入 `.gitignore`
+
+**一键部署**: 使用 `wrangler.toml`,Cloudflare 自动创建资源和分配 ID  
+**手动部署**: 运行 `./deploy.sh`,自动从模板生成 `wrangler.local.toml` 并填入资源 ID
 
 ### 环境变量
 
@@ -160,6 +231,80 @@ JWT_SECRET=your-secret-key
 部署脚本会自动创建:
 - D1 数据库: `meme-db`
 - R2 存储桶: `meme-storage`
+
+### 生成 JWT 密钥
+
+```bash
+# 方法 1: 使用 OpenSSL
+openssl rand -hex 32
+
+# 方法 2: 使用 Node.js
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+## ✅ 部署验证
+
+部署成功后，可以通过以下方式验证：
+
+```bash
+# 1. 健康检查
+curl https://your-worker.workers.dev/health
+
+# 2. 测试设备注册
+curl -X POST https://your-worker.workers.dev/auth/device-register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_name": "Test Device",
+    "device_type": "desktop",
+    "platform": "macos"
+  }'
+```
+
+## 🔍 故障排除
+
+### 常见问题
+
+**1. 一键部署失败**
+- 检查 Cloudflare 账户是否有 D1 和 R2 权限
+- 查看 Cloudflare Dashboard 的部署日志
+- 确认 `wrangler.toml` 配置正确
+
+**2. 数据库迁移失败**
+```bash
+# 手动运行迁移
+npx wrangler d1 execute meme-db --file=./migrations/0001_initial.sql --remote
+```
+
+**3. JWT_SECRET 未设置**
+```bash
+# 生成并设置密钥
+echo "$(node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\")" | npx wrangler secret put JWT_SECRET
+```
+
+**4. 本地开发端口冲突**
+```bash
+# 使用其他端口
+npm run dev -- --port 8788
+```
+
+### 查看日志
+
+```bash
+# 实时查看 Worker 日志
+npm run tail
+
+# 或
+npx wrangler tail
+```
+
+## 📖 详细文档
+
+- [DEPLOYMENT.md](./DEPLOYMENT.md) - 详细部署指南（包括常见问题）
+- [DEPLOYMENT_SUMMARY.md](./DEPLOYMENT_SUMMARY.md) - 部署总结和最佳实践
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
 
 ## 📝 License
 

@@ -113,22 +113,22 @@ create_d1_database() {
         log_success "数据库创建成功,ID: $DB_ID"
     fi
     
-    # 复制配置模板(如果 wrangler.toml 不存在)
-    if [ ! -f "wrangler.toml" ]; then
-        log_info "从模板创建 wrangler.toml..."
-        cp wrangler.toml.example wrangler.toml
+    # 复制配置模板(如果 wrangler.local.toml 不存在)
+    if [ ! -f "wrangler.local.toml" ]; then
+        log_info "从模板创建 wrangler.local.toml..."
+        cp wrangler.toml.example wrangler.local.toml
     fi
     
-    # 更新 wrangler.toml (添加 id 字段)
+    # 更新 wrangler.local.toml (添加 database_id 字段)
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
-        sed -i '' "s/database_name = \"meme-db\"/database_name = \"meme-db\"\nid = \"$DB_ID\"/" wrangler.toml
+        sed -i '' "s/database_name = \"meme-db\"/database_name = \"meme-db\"\ndatabase_id = \"$DB_ID\"/" wrangler.local.toml
     else
         # Linux
-        sed -i "s/database_name = \"meme-db\"/database_name = \"meme-db\"\nid = \"$DB_ID\"/" wrangler.toml
+        sed -i "s/database_name = \"meme-db\"/database_name = \"meme-db\"\ndatabase_id = \"$DB_ID\"/" wrangler.local.toml
     fi
     
-    log_success "wrangler.toml 已更新"
+    log_success "wrangler.local.toml 已更新"
 }
 
 # 运行数据库迁移
@@ -144,7 +144,7 @@ run_migrations() {
     for migration in migrations/*.sql; do
         if [ -f "$migration" ]; then
             log_info "执行迁移: $(basename $migration)"
-            npx wrangler d1 execute meme-db --file="$migration" --remote
+            npx wrangler d1 execute meme-db --file="$migration" --remote -c wrangler.local.toml
         fi
     done
     
@@ -184,7 +184,7 @@ setup_jwt_secret() {
 deploy_workers() {
     log_info "部署 Workers..."
     
-    npx wrangler deploy
+    npx wrangler deploy -c wrangler.local.toml
     
     log_success "Workers 部署成功!"
 }
@@ -198,7 +198,7 @@ show_deployment_info() {
     echo ""
     
     # 获取 Workers URL
-    WORKER_URL=$(npx wrangler deployments list 2>/dev/null | grep "https://" | head -1 | awk '{print $1}')
+    WORKER_URL=$(npx wrangler deployments list -c wrangler.local.toml 2>/dev/null | grep "https://" | head -1 | awk '{print $1}')
     
     if [ -z "$WORKER_URL" ]; then
         WORKER_URL="https://meme-api.<your-subdomain>.workers.dev"
