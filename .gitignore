@@ -13,6 +13,9 @@ dist/
 .env.local
 .dev.vars
 
+# Cloudflare 配置(包含敏感 ID)
+wrangler.toml
+
 # 日志
 *.log
 

@@ -5,12 +5,21 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "./deploy.sh",
+    "deploy": "npm run db:migrations:apply && wrangler deploy",
+    "deploy:manual": "./deploy.sh",
     "deploy:prod": "wrangler deploy --env production",
+    "db:migrations:apply": "wrangler d1 migrations apply DB --remote",
     "db:migrate": "wrangler d1 execute meme-db --file=./migrations/0001_init.sql --remote",
     "db:migrate:local": "wrangler d1 execute meme-db --file=./migrations/0001_init.sql --local",
     "tail": "wrangler tail",
     "build": "echo 'No build step needed'"
+  },
+  "cloudflare": {
+    "bindings": {
+      "JWT_SECRET": {
+        "description": "生成随机密钥: `openssl rand -hex 32` 或 `node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"`"
+      }
+    }
   },
   "dependencies": {
     "hono": "^4.0.0",

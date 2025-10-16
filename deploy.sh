@@ -113,13 +113,19 @@ create_d1_database() {
         log_success "数据库创建成功,ID: $DB_ID"
     fi
     
-    # 更新 wrangler.toml
+    # 复制配置模板(如果 wrangler.toml 不存在)
+    if [ ! -f "wrangler.toml" ]; then
+        log_info "从模板创建 wrangler.toml..."
+        cp wrangler.toml.example wrangler.toml
+    fi
+    
+    # 更新 wrangler.toml (添加 id 字段)
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
-        sed -i '' "s/database_id = \"\"/database_id = \"$DB_ID\"/" wrangler.toml
+        sed -i '' "s/database_name = \"meme-db\"/database_name = \"meme-db\"\nid = \"$DB_ID\"/" wrangler.toml
     else
         # Linux
-        sed -i "s/database_id = \"\"/database_id = \"$DB_ID\"/" wrangler.toml
+        sed -i "s/database_name = \"meme-db\"/database_name = \"meme-db\"\nid = \"$DB_ID\"/" wrangler.toml
     fi
     
     log_success "wrangler.toml 已更新"

@@ -9,8 +9,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "meme-db",
-      "database_id": ""
+      "database_name": "meme-db"
     }
   ],
   "r2_buckets": [
