@@ -5,7 +5,8 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev --local --persist-to=.wrangler/state",
-    "deploy": "wrangler deploy",
+    "deploy": "bash scripts/auto-deploy.sh",
+    "deploy:simple": "wrangler deploy",
     "deploy:manual": "./deploy.sh",
     "deploy:prod": "wrangler deploy --env production",
     "db:migrations:apply": "wrangler d1 migrations apply DB --remote",

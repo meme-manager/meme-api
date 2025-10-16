@@ -22,13 +22,29 @@ Cloudflare Workers API for Meme Manager - 一个轻量级、高性能的表情�
    - 粘贴到 `JWT_SECRET` 输入框
 
 3. **点击 Deploy**
-   - Cloudflare 会自动:
-     - 创建 D1 数据库
-     - 创建 R2 存储桶
-     - 运行数据库迁移
-     - 部署 Worker
+   - Cloudflare 会自动执行 `npm run deploy`
+   - 自动部署脚本会:
+     - ✅ 检查资源状态
+     - ✅ 部署 Worker
+     - ✅ 创建 D1 数据库(如果不存在)
+     - ✅ 创建 R2 存储桶(如果不存在)
+     - ✅ 运行数据库迁移(自动重试3次)
+   - 等待 2-3 分钟完成
 
-**完成!** 访问 Worker URL,在桌面应用中配置服务器地址即可使用。
+**完成!** 访问 Cloudflare Dashboard 查看 Worker URL,在桌面应用中配置服务器地址即可使用。
+
+**部署日志示例**:
+```
+🚀 开始自动部署 Meme API...
+[✓] wrangler 检查通过
+[INFO] 检查 D1 数据库状态...
+[!] 数据库 meme-db 不存在
+[INFO] 开始部署 Worker...
+[✓] Worker 部署成功!
+[INFO] 运行数据库迁移...
+[✓] 数据库迁移完成!
+✅ 部署流程完成!
+```
 
 ---
 
