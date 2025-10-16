@@ -193,8 +193,10 @@ consistency.post('/get-cloud-assets', authMiddleware, async (c) => {
     
     const assetsResult = await c.env.DB.prepare(`
       SELECT 
-        id, file_name, file_path, content_hash, r2_key, thumb_r2_key,
-        cloud_url, file_size, created_at, updated_at, deleted, deleted_at
+        id, file_name, content_hash, r2_key, thumb_r2_key,
+        file_size, mime_type, width, height,
+        is_favorite, favorited_at, use_count, last_used_at,
+        created_at, updated_at, deleted, deleted_at
       FROM assets 
       WHERE user_id = ?
       ORDER BY created_at DESC
