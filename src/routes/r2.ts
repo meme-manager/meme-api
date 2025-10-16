@@ -104,4 +104,105 @@ r2.post('/upload', authMiddleware, async (c) => {
   }
 });
 
+/**
+ * 检查 R2 文件是否存在
+ * POST /r2/check
+ */
+r2.post('/check', authMiddleware, async (c) => {
+  const user = requireAuth(c);
+  
+  try {
+    const body = await c.req.json<{ r2_key: string }>();
+    const r2Key = body.r2_key;
+    
+    if (!r2Key) {
+      return error('缺少 r2_key 参数');
+    }
+    
+    // 验证 r2_key 归属
+    if (!r2Key.startsWith(`${user.user_id}/`)) {
+      return error('无权访问', 403);
+    }
+    
+    console.log(`[R2] 检查文件: ${r2Key}`);
+    
+    const object = await c.env.R2.head(r2Key);
+    
+    return success({
+      exists: object !== null,
+      size: object?.size,
+      uploaded: object?.uploaded
+    });
+  } catch (err) {
+    console.error('[R2] 检查文件失败:', err);
+    return success({ exists: false });
+  }
+});
+
+/**
+ * 下载 R2 文件
+ * GET /r2/download/:key
+ */
+r2.get('/download/:key', authMiddleware, async (c) => {
+  const user = requireAuth(c);
+  const key = decodeURIComponent(c.req.param('key'));
+  
+  // 验证归属
+  if (!key.startsWith(`${user.user_id}/`)) {
+    return error('无权访问', 403);
+  }
+  
+  try {
+    console.log(`[R2] 下载文件: ${key}`);
+    
+    const object = await c.env.R2.get(key);
+    
+    if (!object) {
+      console.log(`[R2] 文件不存在: ${key}`);
+      return notFound('文件不存在');
+    }
+    
+    const headers = new Headers();
+    object.writeHttpMetadata(headers);
+    headers.set('Content-Disposition', `attachment; filename="${key.split('/').pop()}"`);
+    headers.set('Access-Control-Allow-Origin', '*');
+    
+    return new Response(object.body, {
+      headers,
+    });
+  } catch (err) {
+    console.error('[R2] 下载文件失败:', err);
+    return error('下载失败', 500);
+  }
+});
+
+/**
+ * 删除 R2 文件
+ * DELETE /r2/delete/:key
+ */
+r2.delete('/delete/:key', authMiddleware, async (c) => {
+  const user = requireAuth(c);
+  const key = decodeURIComponent(c.req.param('key'));
+  
+  // 验证归属
+  if (!key.startsWith(`${user.user_id}/`)) {
+    return error('无权访问', 403);
+  }
+  
+  try {
+    console.log(`[R2] 删除文件: ${key}`);
+    
+    await c.env.R2.delete(key);
+    
+    console.log(`[R2] 删除成功: ${key}`);
+    
+    return success({
+      deleted: true
+    }, '删除成功');
+  } catch (err) {
+    console.error('[R2] 删除文件失败:', err);
+    return error('删除失败', 500);
+  }
+});
+
 export default r2;
