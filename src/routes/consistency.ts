@@ -191,6 +191,14 @@ consistency.post('/get-cloud-assets', authMiddleware, async (c) => {
   try {
     console.log(`[Consistency] 获取云端资产: user=${user.user_id}`);
     
+    // 先查询所有资产（不过滤 user_id），用于调试
+    const allAssetsResult = await c.env.DB.prepare(`
+      SELECT user_id, COUNT(*) as count
+      FROM assets
+      GROUP BY user_id
+    `).all();
+    console.log(`[Consistency] 🔍 D1 中所有用户的资产统计:`, allAssetsResult.results);
+    
     const assetsResult = await c.env.DB.prepare(`
       SELECT 
         id, file_name, content_hash, r2_key, thumb_r2_key,
@@ -202,6 +210,7 @@ consistency.post('/get-cloud-assets', authMiddleware, async (c) => {
       ORDER BY created_at DESC
     `).bind(user.user_id).all();
     
+    console.log(`[Consistency] 🔍 查询条件: user_id = ${user.user_id}`);
     console.log(`[Consistency] 云端资产数量: ${assetsResult.results.length}`);
     
     return success({

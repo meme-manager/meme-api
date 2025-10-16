@@ -76,9 +76,39 @@ sync.post('/pull', authMiddleware, async (c) => {
 });
 
 /**
- * 推送本地更新
- * POST /sync/push
+ * 调试：查看 D1 中的资产数据
+ * GET /sync/debug-assets
  */
+sync.get('/debug-assets', authMiddleware, async (c) => {
+  const user = requireAuth(c);
+  
+  try {
+    // 查询用户的所有资产
+    const assets = await c.env.DB.prepare(`
+      SELECT id, file_name, r2_key, user_id, created_at, updated_at 
+      FROM assets 
+      WHERE user_id = ? 
+      ORDER BY created_at DESC 
+      LIMIT 20
+    `).bind(user.user_id).all();
+    
+    // 统计
+    const count = await c.env.DB.prepare(`
+      SELECT COUNT(*) as total FROM assets WHERE user_id = ?
+    `).bind(user.user_id).first<{ total: number }>();
+    
+    console.log(`[Sync Debug] 用户 ${user.user_id} 共有 ${count?.total || 0} 个资产`);
+    
+    return success({
+      total: count?.total || 0,
+      assets: assets.results || [],
+    });
+  } catch (err) {
+    console.error('[Sync Debug] 查询失败:', err);
+    return error('查询失败', 500);
+  }
+});
+
 sync.post('/push', authMiddleware, async (c) => {
   const user = requireAuth(c);
   
@@ -90,6 +120,7 @@ sync.post('/push', authMiddleware, async (c) => {
   
   try {
     console.log(`[Sync] 推送更新: 用户=${user.user_id}`);
+    console.log(`[Sync] 收到数据: assets=${body.assets?.length || 0}, tags=${body.tags?.length || 0}`);
     
     // 检查用户配额
     const quotaCheck = await checkUserQuota(user.user_id, c.env);
@@ -103,11 +134,13 @@ sync.post('/push', authMiddleware, async (c) => {
     // 1. 推送资产
     if (body.assets && body.assets.length > 0) {
       console.log(`[Sync] 准备推送 ${body.assets.length} 个资产`);
+      console.log(`[Sync] 🔍 当前用户 ID (from JWT): ${user.user_id}`);
+      console.log(`[Sync] 🔍 第一个资产的 user_id: ${body.assets[0].user_id}`);
       
       for (const asset of body.assets) {
         // 验证资产属于当前用户
         if (asset.user_id !== user.user_id) {
-          console.warn(`[Sync] 跳过非本用户资产: ${asset.id}`);
+          console.warn(`[Sync] ⚠️ 跳过非本用户资产: ${asset.id}, asset.user_id=${asset.user_id}, user.user_id=${user.user_id}`);
           continue;
         }
         
@@ -210,7 +243,19 @@ sync.post('/push', authMiddleware, async (c) => {
     
     // 批量执行
     if (statements.length > 0) {
-      await c.env.DB.batch(statements);
+      console.log(`[Sync] 🔄 开始执行 ${statements.length} 条 SQL 语句...`);
+      const batchResult = await c.env.DB.batch(statements);
+      console.log(`[Sync] ✅ 批量执行完成，结果:`, batchResult.map(r => ({ success: r.success, meta: r.meta })));
+      
+      // 验证数据是否真的插入了
+      if (body.assets && body.assets.length > 0) {
+        const verifyCount = await c.env.DB.prepare(`
+          SELECT COUNT(*) as count FROM assets WHERE user_id = ?
+        `).bind(user.user_id).first<{ count: number }>();
+        console.log(`[Sync] 🔍 验证：D1 中现在有 ${verifyCount?.count || 0} 个资产`);
+      }
+    } else {
+      console.log(`[Sync] ⏭️  没有数据需要推送`);
     }
     
     // 更新用户存储使用量
