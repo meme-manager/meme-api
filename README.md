@@ -4,38 +4,35 @@ Cloudflare Workers API for Meme Manager - 一个轻量级、高性能的表情�
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/meme-manager/meme-api)
 
-## 🚀 快速部署
+## 🌐 网页版一键部署
 
-### 一键部署 (推荐)
+**简单 3 步:**
 
-点击上面的 **Deploy to Cloudflare** 按钮,Cloudflare 会自动:
+1. **点击部署按钮**
+   - 点击上面的 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/meme-manager/meme-api) 按钮
 
-1. **Fork 仓库** - 在你的 GitHub 账户创建新仓库
-2. **创建资源** - 自动创建 D1 数据库和 R2 存储桶
-3. **配置绑定** - 自动绑定资源到 Worker 并更新配置文件
-4. **构建部署** - 运行 `npm run deploy`,自动执行数据库迁移并部署 Worker
-5. **配置 CI/CD** - 设置 Workers Builds,每次 push 自动重新部署
-6. **预览功能** - 为 Pull Request 自动生成预览 URL
+2. **设置密钥**
+   - 生成 `JWT_SECRET`:
+     ```javascript
+     // 在浏览器控制台 (F12) 运行
+     Array.from(crypto.getRandomValues(new Uint8Array(32)))
+       .map(b => b.toString(16).padStart(2, '0'))
+       .join('')
+     ```
+   - 粘贴到 `JWT_SECRET` 输入框
 
-**你只需要**:
-- 设置 `JWT_SECRET` 密钥(部署时会提示如何生成)
-  ```bash
-  # 生成方法:
-  openssl rand -hex 32
-  # 或
-  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-  ```
-- 等待几分钟完成部署
+3. **点击 Deploy**
+   - Cloudflare 会自动:
+     - 创建 D1 数据库
+     - 创建 R2 存储桶
+     - 运行数据库迁移
+     - 部署 Worker
 
-**工作原理**:
-- Cloudflare 读取 `wrangler.toml` 配置文件
-- 自动创建所需的 D1 数据库和 R2 存储桶
-- 自动为资源分配 ID 并绑定到 Worker
-- 运行 `package.json` 中的 `deploy` 脚本
-- `deploy` 脚本会先执行数据库迁移,然后部署 Worker
-- **自动配置 CI/CD**: 每次 push 到 main 分支会自动重新部署
+**完成!** 访问 Worker URL,在桌面应用中配置服务器地址即可使用。
 
-### 命令行部署
+---
+
+## 💻 命令行部署
 
 如果你想手动部署:
 
