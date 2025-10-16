@@ -295,16 +295,38 @@ sync.post('/push', authMiddleware, async (c) => {
       
       // 验证数据是否真的插入了
       if (body.assets && body.assets.length > 0) {
+        // 1. 先查询所有资产（不过滤 user_id）
+        const allAssetsCount = await c.env.DB.prepare(`
+          SELECT COUNT(*) as count FROM assets
+        `).first<{ count: number }>();
+        console.log(`[Sync] 🔍 D1 中所有资产总数: ${allAssetsCount?.count || 0}`);
+        
+        // 2. 按 user_id 分组统计
+        const byUser = await c.env.DB.prepare(`
+          SELECT user_id, COUNT(*) as count FROM assets GROUP BY user_id
+        `).all();
+        console.log(`[Sync] 🔍 按用户分组:`, byUser.results);
+        
+        // 3. 查询当前用户的资产
         const verifyCount = await c.env.DB.prepare(`
           SELECT COUNT(*) as count FROM assets WHERE user_id = ?
         `).bind(user.user_id).first<{ count: number }>();
-        console.log(`[Sync] 🔍 验证：D1 中现在有 ${verifyCount?.count || 0} 个资产（user_id=${user.user_id}）`);
+        console.log(`[Sync] 🔍 当前用户资产数: ${verifyCount?.count || 0}（user_id=${user.user_id}）`);
         
-        // 查看刚插入的资产
+        // 4. 尝试根据 ID 直接查询刚插入的资产
+        if (body.assets.length > 0) {
+          const firstAssetId = body.assets[0].id;
+          const directQuery = await c.env.DB.prepare(`
+            SELECT id, user_id, file_name, r2_key FROM assets WHERE id = ?
+          `).bind(firstAssetId).first();
+          console.log(`[Sync] 🔍 根据ID直接查询第一个资产 (${firstAssetId}):`, directQuery);
+        }
+        
+        // 5. 查看最近的资产（不过滤 user_id）
         const recentAssets = await c.env.DB.prepare(`
-          SELECT id, file_name, r2_key FROM assets WHERE user_id = ? ORDER BY created_at DESC LIMIT 3
-        `).bind(user.user_id).all();
-        console.log(`[Sync] 🔍 最近的资产:`, recentAssets.results);
+          SELECT id, user_id, file_name, r2_key FROM assets ORDER BY created_at DESC LIMIT 5
+        `).all();
+        console.log(`[Sync] 🔍 最近的5个资产:`, recentAssets.results);
       }
     } else {
       console.log(`[Sync] ⏭️  没有数据需要推送`);
