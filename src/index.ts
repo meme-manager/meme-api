@@ -18,7 +18,7 @@ const app = new Hono<AppEnv>();
 app.use('/*', cors({
   origin: '*',
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Content-Hash', 'X-File-Name'],
   maxAge: 86400,
 }));
 
