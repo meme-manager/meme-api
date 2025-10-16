@@ -119,11 +119,6 @@ r2.post('/check', authMiddleware, async (c) => {
       return error('缺少 r2_key 参数');
     }
     
-    // 验证 r2_key 归属
-    if (!r2Key.startsWith(`${user.user_id}/`)) {
-      return error('无权访问', 403);
-    }
-    
     console.log(`[R2] 检查文件: ${r2Key}`);
     
     const object = await c.env.R2.head(r2Key);
@@ -146,11 +141,6 @@ r2.post('/check', authMiddleware, async (c) => {
 r2.get('/download/:key', authMiddleware, async (c) => {
   const user = requireAuth(c);
   const key = decodeURIComponent(c.req.param('key'));
-  
-  // 验证归属
-  if (!key.startsWith(`${user.user_id}/`)) {
-    return error('无权访问', 403);
-  }
   
   try {
     console.log(`[R2] 下载文件: ${key}`);
@@ -183,11 +173,6 @@ r2.get('/download/:key', authMiddleware, async (c) => {
 r2.delete('/delete/:key', authMiddleware, async (c) => {
   const user = requireAuth(c);
   const key = decodeURIComponent(c.req.param('key'));
-  
-  // 验证归属
-  if (!key.startsWith(`${user.user_id}/`)) {
-    return error('无权访问', 403);
-  }
   
   try {
     console.log(`[R2] 删除文件: ${key}`);
