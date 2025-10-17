@@ -127,6 +127,27 @@ else
 fi
 echo ""
 
+# 设置 JWT_SECRET
+log_info "检查 JWT_SECRET..."
+# 生成一个随机的 64 位十六进制字符串
+JWT_SECRET=$(openssl rand -hex 32)
+
+if [ -z "$JWT_SECRET" ]; then
+    log_error "生成 JWT_SECRET 失败"
+    exit 1
+fi
+
+log_info "设置 JWT_SECRET 环境变量..."
+# 使用 wrangler secret put 设置 JWT_SECRET
+echo "$JWT_SECRET" | npx wrangler secret put JWT_SECRET > /dev/null 2>&1
+
+if [ $? -eq 0 ]; then
+    log_success "JWT_SECRET 设置成功"
+else
+    log_warning "JWT_SECRET 设置失败，将在部署后手动设置"
+fi
+echo ""
+
 # 部署 Worker
 log_info "开始部署 Worker..."
 if npx wrangler deploy; then
@@ -181,8 +202,15 @@ echo "  1. 访问 Cloudflare Dashboard 查看 Worker URL"
 echo "  2. 测试健康检查: curl https://your-worker.workers.dev/health"
 if [ "$MIGRATION_SUCCESS" = false ]; then
     echo "  3. 运行数据库迁移: npm run db:migrations:apply"
+    echo "  4. 登录管理员面板设置同步密码（默认管理员密码: admin）"
 else
-    echo "  3. 在桌面应用中配置服务器地址"
+    echo "  3. 登录管理员面板设置同步密码（默认管理员密码: admin）"
+    echo "  4. 在桌面应用中配置服务器地址"
 fi
 echo ""
 log_success "部署流程完成!"
+echo ""
+log_info "安全提示:"
+echo "  ✅ JWT_SECRET 已自动生成并设置为 Worker Secret"
+echo "  ⚠️ 请立即修改管理员密码（默认: admin）"
+echo "  ⚠️ 设置强同步密码以保护服务器"
