@@ -78,9 +78,8 @@ r2.post('/upload', authMiddleware, async (c) => {
     // 2. 生成 R2 key（全局共享模式，使用统一路径）
     const ext = fileName.split('.').pop() || 'bin';
     const r2Key = `assets/${contentHash}.${ext}`;
-    const thumbR2Key = `thumbs/${contentHash}_256.webp`;
     
-    // 3. 上传原图到 R2
+    // 3. 上传原图到 R2（缩略图由客户端本地生成，无需上传）
     await c.env.R2.put(r2Key, fileData, {
       httpMetadata: {
         contentType: contentType,
@@ -94,7 +93,6 @@ r2.post('/upload', authMiddleware, async (c) => {
     
     return success({
       r2_key: r2Key,
-      thumb_r2_key: thumbR2Key,
       r2_url: r2Url,
     }, '上传成功');
     

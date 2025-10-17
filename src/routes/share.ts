@@ -109,20 +109,7 @@ share.post('/create', authMiddleware, async (c) => {
           console.log(`[Share] 复制图片: ${sourceKey} -> ${destKey}`);
         }
         
-        // 复制缩略图（如果存在）
-        if (asset.thumb_r2_key) {
-          const thumbSourceKey = asset.thumb_r2_key;
-          const thumbDestKey = `shared/${shareId}/${asset.content_hash}_thumb.webp`;
-          
-          const thumbSourceObject = await c.env.R2.get(thumbSourceKey);
-          if (thumbSourceObject) {
-            await c.env.R2.put(thumbDestKey, thumbSourceObject.body, {
-              httpMetadata: {
-                contentType: 'image/webp',
-              },
-            });
-          }
-        }
+        // 缩略图由客户端本地生成，无需复制到 R2
       } catch (err) {
         console.error(`[Share] 复制图片失败: ${asset.id}`, err);
       }

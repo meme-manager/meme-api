@@ -148,9 +148,9 @@ sync.post('/push', authMiddleware, async (c) => {
           c.env.DB.prepare(`
             INSERT INTO assets (
               id, content_hash, file_name, mime_type, file_size, 
-              width, height, r2_key, thumb_r2_key, is_favorite, favorited_at,
+              width, height, r2_key, is_favorite, favorited_at,
               use_count, last_used_at, created_at, updated_at, deleted, deleted_at, created_by_device
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               content_hash = excluded.content_hash,
               file_name = excluded.file_name,
@@ -159,7 +159,6 @@ sync.post('/push', authMiddleware, async (c) => {
               width = excluded.width,
               height = excluded.height,
               r2_key = excluded.r2_key,
-              thumb_r2_key = excluded.thumb_r2_key,
               is_favorite = excluded.is_favorite,
               favorited_at = excluded.favorited_at,
               use_count = excluded.use_count,
@@ -170,7 +169,7 @@ sync.post('/push', authMiddleware, async (c) => {
           `).bind(
             asset.id, asset.content_hash, asset.file_name,
             asset.mime_type, asset.file_size, asset.width, asset.height,
-            asset.r2_key, asset.thumb_r2_key, asset.is_favorite, asset.favorited_at,
+            asset.r2_key, asset.is_favorite, asset.favorited_at,
             asset.use_count, asset.last_used_at, asset.created_at, asset.updated_at,
             asset.deleted, asset.deleted_at, device.device_id
           )

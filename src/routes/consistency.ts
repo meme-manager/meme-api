@@ -32,9 +32,9 @@ consistency.post('/check-orphans', authMiddleware, async (c) => {
     
     console.log(`[Consistency] R2 文件总数: ${r2Files.length}`);
     
-    // 2. 从 D1 查询所有 r2_key（全局）
+    // 2. 从 D1 查询所有 r2_key（全局，仅原图）
     const assetsResult = await c.env.DB.prepare(`
-      SELECT r2_key, thumb_r2_key 
+      SELECT r2_key
       FROM assets 
       WHERE r2_key IS NOT NULL
     `).all();
@@ -42,7 +42,6 @@ consistency.post('/check-orphans', authMiddleware, async (c) => {
     const d1Keys = new Set<string>();
     for (const row of assetsResult.results) {
       if (row.r2_key) d1Keys.add(row.r2_key as string);
-      if (row.thumb_r2_key) d1Keys.add(row.thumb_r2_key as string);
     }
     
     console.log(`[Consistency] D1 记录的 r2_key 数量: ${d1Keys.size}`);
@@ -88,16 +87,20 @@ consistency.post('/check-d1-files', authMiddleware, async (c) => {
     
     // 1. 查询 D1 中所有资产（全局）
     const assetsResult = await c.env.DB.prepare(`
-      SELECT id, r2_key, thumb_r2_key 
+      SELECT id, r2_key
       FROM assets 
       WHERE r2_key IS NOT NULL AND deleted = 0
       ORDER BY created_at DESC
     `).all();
     
-    console.log(`[Consistency] D1 资产总数: ${assetsResult.results.length}`);
+    console.log(`[Consistency] 资产数量: ${assetsResult.results.length}`);
     
-    // 2. 收集所有需要检查的 r2_key
-    const keysToCheck: { assetId: string; r2Key: string; type: 'main' | 'thumb' }[] = [];
+    // 2. 检查每个资产的文件是否存在（仅原图）
+    const keysToCheck: Array<{
+      assetId: string;
+      r2Key: string;
+      type: 'main';
+    }> = [];
     
     for (const row of assetsResult.results) {
       if (row.r2_key) {
@@ -105,13 +108,6 @@ consistency.post('/check-d1-files', authMiddleware, async (c) => {
           assetId: row.id as string,
           r2Key: row.r2_key as string,
           type: 'main'
-        });
-      }
-      if (row.thumb_r2_key) {
-        keysToCheck.push({
-          assetId: row.id as string,
-          r2Key: row.thumb_r2_key as string,
-          type: 'thumb'
         });
       }
     }
@@ -141,24 +137,10 @@ consistency.post('/check-d1-files', authMiddleware, async (c) => {
     
     console.log(`[Consistency] 检查完成: ${missing.length}/${keysToCheck.length} 缺失`);
     
-    // 4. 按 asset_id 分组
-    const missingByAsset = new Map<string, { r2_key?: string; thumb_r2_key?: string }>();
-    
-    for (const item of missing) {
-      if (!missingByAsset.has(item.assetId)) {
-        missingByAsset.set(item.assetId, {});
-      }
-      const asset = missingByAsset.get(item.assetId)!;
-      if (item.type === 'main') {
-        asset.r2_key = item.r2Key;
-      } else {
-        asset.thumb_r2_key = item.r2Key;
-      }
-    }
-    
-    const missingAssets = Array.from(missingByAsset.entries()).map(([assetId, keys]) => ({
-      asset_id: assetId,
-      ...keys
+    // 4. 整理缺失的资产列表（仅原图）
+    const missingAssets = missing.map(item => ({
+      asset_id: item.assetId,
+      r2_key: item.r2Key
     }));
     
     return success({
@@ -192,7 +174,7 @@ consistency.post('/get-cloud-assets', authMiddleware, async (c) => {
     // 查询所有资产（全局共享）
     const assetsResult = await c.env.DB.prepare(`
       SELECT 
-        id, file_name, content_hash, r2_key, thumb_r2_key,
+        id, file_name, content_hash, r2_key,
         file_size, mime_type, width, height,
         is_favorite, favorited_at, use_count, last_used_at,
         created_at, updated_at, deleted, deleted_at, created_by_device

@@ -48,7 +48,7 @@ export interface Asset {
   width: number;
   height: number;
   r2_key: string;
-  thumb_r2_key: string;
+  // thumb_r2_key 已移除 - 缩略图由客户端本地生成
   is_favorite: number;
   favorited_at: number | null;
   use_count: number;

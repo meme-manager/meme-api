@@ -33,9 +33,8 @@ CREATE TABLE assets (
     width INTEGER NOT NULL,
     height INTEGER NOT NULL,
     
-    -- R2 存储路径
+    -- R2 存储路径（只存原图，缩略图由客户端生成）
     r2_key TEXT NOT NULL,
-    thumb_r2_key TEXT,
     
     -- 元数据
     is_favorite INTEGER DEFAULT 0,
