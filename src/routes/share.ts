@@ -3,7 +3,7 @@ import type { AppEnv, CreateShareRequest, Share, Asset } from '../types';
 import { success, error, notFound } from '../utils/response';
 import { authMiddleware, requireAuth } from '../middleware/auth';
 import { safeJsonParse, validateRequired, now, generateShortId, hashPassword, verifyPassword } from '../utils/helpers';
-import { checkUserQuota, checkDailyShareLimit, checkShareViewLimit, getClientIp } from '../utils/rateLimit';
+import { checkGlobalQuota, checkDailyShareLimit, checkShareViewLimit, getClientIp } from '../utils/rateLimit';
 
 const share = new Hono<AppEnv>();
 
@@ -12,7 +12,7 @@ const share = new Hono<AppEnv>();
  * POST /share/create
  */
 share.post('/create', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   
   const body = await safeJsonParse<CreateShareRequest>(c.req.raw);
   
@@ -31,14 +31,14 @@ share.post('/create', authMiddleware, async (c) => {
   }
   
   try {
-    // 检查配额
-    const quotaCheck = await checkUserQuota(user.user_id, c.env);
+    // 检查全局配额
+    const quotaCheck = await checkGlobalQuota(c.env);
     if (!quotaCheck.allowed) {
       return error(quotaCheck.reason || '超出配额限制', 403);
     }
     
-    // 检查每日分享限制
-    const dailyCheck = await checkDailyShareLimit(user.user_id, c.env);
+    // 检查每日全局分享限制
+    const dailyCheck = await checkDailyShareLimit(c.env);
     if (!dailyCheck.allowed) {
       return error(dailyCheck.reason || '超出每日分享限制', 403);
     }
@@ -48,14 +48,14 @@ share.post('/create', authMiddleware, async (c) => {
     const expiresAt = body.expires_in ? timestamp + body.expires_in * 1000 : null;
     const passwordHash = body.password ? await hashPassword(body.password) : null;
     
-    console.log(`[Share] 创建分享: ${shareId}, 用户=${user.user_id}, 资产数=${body.asset_ids.length}`);
+    console.log(`[Share] 创建分享: ${shareId}, 设备=${device.device_id}, 资产数=${body.asset_ids.length}`);
     
-    // 1. 验证所有资产都属于当前用户
+    // 1. 验证所有资产存在（全局共享，不需要检查 user_id）
     const assetCheckResults = await Promise.all(
       body.asset_ids.map(assetId =>
         c.env.DB.prepare(
-          'SELECT id, user_id, content_hash, file_name, mime_type, width, height, r2_key FROM assets WHERE id = ? AND user_id = ? AND deleted = 0'
-        ).bind(assetId, user.user_id).first<Asset>()
+          'SELECT id, content_hash, file_name, mime_type, width, height, r2_key FROM assets WHERE id = ? AND deleted = 0'
+        ).bind(assetId).first<Asset>()
       )
     );
     
@@ -72,12 +72,12 @@ share.post('/create', authMiddleware, async (c) => {
     // 2. 创建分享记录
     await c.env.DB.prepare(`
       INSERT INTO shares (
-        share_id, user_id, title, description, expires_at, max_downloads, 
-        password_hash, view_count, download_count, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+        share_id, title, description, expires_at, max_downloads, 
+        password_hash, view_count, download_count, created_at, updated_at, created_by_device
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
     `).bind(
-      shareId, user.user_id, body.title || null, body.description || null,
-      expiresAt, body.max_downloads || null, passwordHash, timestamp, timestamp
+      shareId, body.title || null, body.description || null,
+      expiresAt, body.max_downloads || null, passwordHash, timestamp, timestamp, device.device_id
     ).run();
     
     // 3. 关联资产
@@ -241,24 +241,35 @@ share.get('/:shareId', async (c) => {
 });
 
 /**
- * 获取我的分享列表
- * GET /share/list
+ * 获取分享列表（全局或按设备过滤）
+ * GET /share/list?device=true
  */
 share.get('/list', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
+  const onlyMyDevice = c.req.query('device') === 'true';
   
   try {
-    const shares = await c.env.DB.prepare(`
+    let query = `
       SELECT 
         s.share_id, s.title, s.view_count, s.download_count, 
-        s.created_at, s.expires_at,
+        s.created_at, s.expires_at, s.created_by_device,
         COUNT(sa.asset_id) as asset_count
       FROM shares s
       LEFT JOIN share_assets sa ON s.share_id = sa.share_id
-      WHERE s.user_id = ?
-      GROUP BY s.share_id
-      ORDER BY s.created_at DESC
-    `).bind(user.user_id).all();
+    `;
+    
+    const params: string[] = [];
+    
+    if (onlyMyDevice) {
+      query += ' WHERE s.created_by_device = ?';
+      params.push(device.device_id);
+    }
+    
+    query += ' GROUP BY s.share_id ORDER BY s.created_at DESC';
+    
+    const shares = params.length > 0 
+      ? await c.env.DB.prepare(query).bind(...params).all()
+      : await c.env.DB.prepare(query).all();
     
     return success({
       shares: shares.results || [],
@@ -275,22 +286,23 @@ share.get('/list', authMiddleware, async (c) => {
  * DELETE /share/:shareId
  */
 share.delete('/:shareId', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   const shareId = c.req.param('shareId');
   
   try {
-    // 1. 验证分享属于当前用户
+    // 1. 验证分享存在（可选：检查是否由当前设备创建）
     const shareInfo = await c.env.DB.prepare(
-      'SELECT user_id FROM shares WHERE share_id = ?'
-    ).bind(shareId).first<{ user_id: string }>();
+      'SELECT created_by_device FROM shares WHERE share_id = ?'
+    ).bind(shareId).first<{ created_by_device: string | null }>();
     
     if (!shareInfo) {
       return notFound('分享不存在');
     }
     
-    if (shareInfo.user_id !== user.user_id) {
-      return error('无权删除此分享', 403);
-    }
+    // 可选：只允许创建者删除
+    // if (shareInfo.created_by_device && shareInfo.created_by_device !== device.device_id) {
+    //   return error('无权删除此分享', 403);
+    // }
     
     // 2. 删除分享记录（级联删除 share_assets）
     await c.env.DB.prepare(

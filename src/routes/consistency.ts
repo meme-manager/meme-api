@@ -12,17 +12,15 @@ const consistency = new Hono<AppEnv>();
  * 找出 R2 中存在，但 D1 中没有记录的文件
  */
 consistency.post('/check-orphans', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   
   try {
-    console.log(`[Consistency] 检查 R2 孤儿文件: user=${user.user_id}`);
+    console.log(`[Consistency] 检查 R2 孤儿文件: device=${device.device_id}`);
     
-    // 1. 获取用户在 R2 的所有文件
+    // 1. 获取 R2 的所有文件（全局）
     const r2Files: { key: string; size: number; uploaded: Date }[] = [];
     
-    const listed = await c.env.R2.list({
-      prefix: `${user.user_id}/`
-    });
+    const listed = await c.env.R2.list();
     
     for (const object of listed.objects) {
       r2Files.push({
@@ -34,12 +32,12 @@ consistency.post('/check-orphans', authMiddleware, async (c) => {
     
     console.log(`[Consistency] R2 文件总数: ${r2Files.length}`);
     
-    // 2. 从 D1 查询所有 r2_key
+    // 2. 从 D1 查询所有 r2_key（全局）
     const assetsResult = await c.env.DB.prepare(`
       SELECT r2_key, thumb_r2_key 
       FROM assets 
-      WHERE user_id = ? AND r2_key IS NOT NULL
-    `).bind(user.user_id).all();
+      WHERE r2_key IS NOT NULL
+    `).all();
     
     const d1Keys = new Set<string>();
     for (const row of assetsResult.results) {
@@ -83,18 +81,18 @@ consistency.post('/check-orphans', authMiddleware, async (c) => {
  * 检查 D1 中记录的 r2_key 是否在 R2 中真实存在
  */
 consistency.post('/check-d1-files', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   
   try {
-    console.log(`[Consistency] 检查 D1 文件完整性: user=${user.user_id}`);
+    console.log(`[Consistency] 检查 D1 文件完整性: device=${device.device_id}`);
     
-    // 1. 查询 D1 中所有资产
+    // 1. 查询 D1 中所有资产（全局）
     const assetsResult = await c.env.DB.prepare(`
       SELECT id, r2_key, thumb_r2_key 
       FROM assets 
-      WHERE user_id = ? AND r2_key IS NOT NULL AND deleted = 0
+      WHERE r2_key IS NOT NULL AND deleted = 0
       ORDER BY created_at DESC
-    `).bind(user.user_id).all();
+    `).all();
     
     console.log(`[Consistency] D1 资产总数: ${assetsResult.results.length}`);
     
@@ -180,38 +178,37 @@ consistency.post('/check-d1-files', authMiddleware, async (c) => {
 });
 
 /**
- * 获取用户的所有资产数据（用于前端对比）
+ * 获取所有资产数据（用于前端对比）
  * POST /consistency/get-cloud-assets
  * 
  * 返回云端所有资产数据，供前端与本地数据对比
  */
 consistency.post('/get-cloud-assets', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   
   try {
-    console.log(`[Consistency] 获取云端资产: user=${user.user_id}`);
+    console.log(`[Consistency] 获取云端资产: device=${device.device_id}`);
     
-    // 先查询所有资产（不过滤 user_id），用于调试
-    const allAssetsResult = await c.env.DB.prepare(`
-      SELECT user_id, COUNT(*) as count
-      FROM assets
-      GROUP BY user_id
-    `).all();
-    console.log(`[Consistency] 🔍 D1 中所有用户的资产统计:`, allAssetsResult.results);
-    
+    // 查询所有资产（全局共享）
     const assetsResult = await c.env.DB.prepare(`
       SELECT 
         id, file_name, content_hash, r2_key, thumb_r2_key,
         file_size, mime_type, width, height,
         is_favorite, favorited_at, use_count, last_used_at,
-        created_at, updated_at, deleted, deleted_at
+        created_at, updated_at, deleted, deleted_at, created_by_device
       FROM assets 
-      WHERE user_id = ?
       ORDER BY created_at DESC
-    `).bind(user.user_id).all();
+    `).all();
     
-    console.log(`[Consistency] 🔍 查询条件: user_id = ${user.user_id}`);
     console.log(`[Consistency] 云端资产数量: ${assetsResult.results.length}`);
+    
+    // 按设备分组统计
+    const byDevice = await c.env.DB.prepare(`
+      SELECT created_by_device, COUNT(*) as count
+      FROM assets
+      GROUP BY created_by_device
+    `).all();
+    console.log(`[Consistency] 🔍 按设备分组:`, byDevice.results);
     
     return success({
       assets: assetsResult.results,

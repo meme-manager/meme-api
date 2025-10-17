@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
-import type { AppEnv, SyncPullRequest, SyncPushRequest, Asset, Tag, AssetTag, UserSetting } from '../types';
+import type { AppEnv, SyncPullRequest, SyncPushRequest, Asset, Tag, AssetTag, Setting } from '../types';
 import { success, error } from '../utils/response';
 import { authMiddleware, requireAuth } from '../middleware/auth';
 import { safeJsonParse, validateRequired, now } from '../utils/helpers';
-import { checkUserQuota } from '../utils/rateLimit';
+import { checkGlobalQuota } from '../utils/rateLimit';
 
 const sync = new Hono<AppEnv>();
 
@@ -12,7 +12,7 @@ const sync = new Hono<AppEnv>();
  * POST /sync/pull
  */
 sync.post('/pull', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   
   const body = await safeJsonParse<SyncPullRequest>(c.req.raw);
   
@@ -23,34 +23,33 @@ sync.post('/pull', authMiddleware, async (c) => {
   const since = body.since || 0;
   
   try {
-    console.log(`[Sync] 拉取更新: 用户=${user.user_id}, since=${since}`);
+    console.log(`[Sync] 拉取更新: 设备=${device.device_id}, since=${since}`);
     
-    // 1. 获取更新的资产
+    // 1. 获取更新的资产（全局共享）
     const assets = await c.env.DB.prepare(`
       SELECT * FROM assets 
-      WHERE user_id = ? AND updated_at > ?
+      WHERE updated_at > ?
       ORDER BY updated_at ASC
-    `).bind(user.user_id, since).all<Asset>();
+    `).bind(since).all<Asset>();
     
-    // 2. 获取更新的标签
+    // 2. 获取更新的标签（全局共享）
     const tags = await c.env.DB.prepare(`
       SELECT * FROM tags 
-      WHERE user_id = ? AND updated_at > ?
+      WHERE updated_at > ?
       ORDER BY updated_at ASC
-    `).bind(user.user_id, since).all<Tag>();
+    `).bind(since).all<Tag>();
     
     // 3. 获取更新的资产-标签关联
     const assetTags = await c.env.DB.prepare(`
-      SELECT at.* FROM asset_tags at
-      JOIN assets a ON at.asset_id = a.id
-      WHERE a.user_id = ? AND at.created_at > ?
-    `).bind(user.user_id, since).all<AssetTag>();
+      SELECT * FROM asset_tags
+      WHERE created_at > ?
+    `).bind(since).all<AssetTag>();
     
-    // 4. 获取更新的设置
+    // 4. 获取更新的设置（全局共享）
     const settings = await c.env.DB.prepare(`
-      SELECT * FROM user_settings 
-      WHERE user_id = ? AND updated_at > ?
-    `).bind(user.user_id, since).all<UserSetting>();
+      SELECT * FROM settings 
+      WHERE updated_at > ?
+    `).bind(since).all<Setting>();
     
     const serverTimestamp = now();
     const totalCount = (assets.results?.length || 0) + 
@@ -80,24 +79,23 @@ sync.post('/pull', authMiddleware, async (c) => {
  * GET /sync/debug-assets
  */
 sync.get('/debug-assets', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   
   try {
-    // 查询用户的所有资产
+    // 查询所有资产（全局共享）
     const assets = await c.env.DB.prepare(`
-      SELECT id, file_name, r2_key, user_id, created_at, updated_at 
+      SELECT id, file_name, r2_key, created_by_device, created_at, updated_at 
       FROM assets 
-      WHERE user_id = ? 
       ORDER BY created_at DESC 
       LIMIT 20
-    `).bind(user.user_id).all();
+    `).all();
     
     // 统计
     const count = await c.env.DB.prepare(`
-      SELECT COUNT(*) as total FROM assets WHERE user_id = ?
-    `).bind(user.user_id).first<{ total: number }>();
+      SELECT COUNT(*) as total FROM assets
+    `).first<{ total: number }>();
     
-    console.log(`[Sync Debug] 用户 ${user.user_id} 共有 ${count?.total || 0} 个资产`);
+    console.log(`[Sync Debug] 设备 ${device.device_id} 查询到 ${count?.total || 0} 个全局资产`);
     
     return success({
       total: count?.total || 0,
@@ -110,7 +108,7 @@ sync.get('/debug-assets', authMiddleware, async (c) => {
 });
 
 sync.post('/push', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   
   const body = await safeJsonParse<SyncPushRequest>(c.req.raw);
   
@@ -119,11 +117,11 @@ sync.post('/push', authMiddleware, async (c) => {
   }
   
   try {
-    console.log(`[Sync] 推送更新: 用户=${user.user_id}`);
+    console.log(`[Sync] 推送更新: 设备=${device.device_id}`);
     console.log(`[Sync] 收到数据: assets=${body.assets?.length || 0}, tags=${body.tags?.length || 0}`);
     
-    // 检查用户配额
-    const quotaCheck = await checkUserQuota(user.user_id, c.env);
+    // 检查全局配额
+    const quotaCheck = await checkGlobalQuota(c.env);
     if (!quotaCheck.allowed) {
       return error(quotaCheck.reason || '超出配额限制', 403);
     }
@@ -131,33 +129,27 @@ sync.post('/push', authMiddleware, async (c) => {
     let syncedCount = 0;
     const statements: D1PreparedStatement[] = [];
     
-    // 1. 推送资产
+    // 1. 推送资产（全局共享）
     if (body.assets && body.assets.length > 0) {
       console.log(`[Sync] 准备推送 ${body.assets.length} 个资产`);
-      console.log(`[Sync] 🔍 当前用户 ID (from JWT): ${user.user_id}`);
-      console.log(`[Sync] 🔍 第一个资产的 user_id: ${body.assets[0].user_id}`);
       
       for (const asset of body.assets) {
-        // 验证资产属于当前用户
-        if (asset.user_id !== user.user_id) {
-          console.warn(`[Sync] ⚠️ 跳过非本用户资产: ${asset.id}, asset.user_id=${asset.user_id}, user.user_id=${user.user_id}`);
-          continue;
-        }
+        console.log(`[Sync] 🔍 处理资产: ${asset.id}`);
         
-        console.log(`[Sync] 推送资产: ${asset.id}, r2_key: ${asset.r2_key || 'null'}`);
-        
-        // 检查是否所有必需字段都有值
+        // 检查是否有必需字段
         if (!asset.r2_key) {
           console.error(`[Sync] ❌ 跳过没有 r2_key 的资产: ${asset.id}`);
           continue;
         }
         
+        console.log(`[Sync] 📝 插入资产: ${asset.id}, 创建设备=${device.device_id}`);
+        
         statements.push(
           c.env.DB.prepare(`
             INSERT INTO assets (
-              id, user_id, content_hash, file_name, mime_type, file_size, 
+              id, content_hash, file_name, mime_type, file_size, 
               width, height, r2_key, thumb_r2_key, is_favorite, favorited_at,
-              use_count, last_used_at, created_at, updated_at, deleted, deleted_at
+              use_count, last_used_at, created_at, updated_at, deleted, deleted_at, created_by_device
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               content_hash = excluded.content_hash,
@@ -176,39 +168,34 @@ sync.post('/push', authMiddleware, async (c) => {
               deleted = excluded.deleted,
               deleted_at = excluded.deleted_at
           `).bind(
-            asset.id, asset.user_id, asset.content_hash, asset.file_name,
+            asset.id, asset.content_hash, asset.file_name,
             asset.mime_type, asset.file_size, asset.width, asset.height,
             asset.r2_key, asset.thumb_r2_key, asset.is_favorite, asset.favorited_at,
             asset.use_count, asset.last_used_at, asset.created_at, asset.updated_at,
-            asset.deleted, asset.deleted_at
+            asset.deleted, asset.deleted_at, device.device_id
           )
         );
         syncedCount++;
       }
     }
     
-    // 2. 推送标签
+    // 2. 推送标签（全局共享）
     if (body.tags && body.tags.length > 0) {
       console.log(`[Sync] 准备推送 ${body.tags.length} 个标签`);
       
       for (const tag of body.tags) {
-        if (tag.user_id !== user.user_id) {
-          console.warn(`[Sync] 跳过非本用户标签: ${tag.id}`);
-          continue;
-        }
-        
         console.log(`[Sync] 推送标签: ${tag.id}, name: ${tag.name}`);
         
         statements.push(
           c.env.DB.prepare(`
-            INSERT INTO tags (id, user_id, name, color, use_count, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tags (id, name, color, use_count, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               color = excluded.color,
               use_count = excluded.use_count,
               updated_at = excluded.updated_at
-          `).bind(tag.id, tag.user_id, tag.name, tag.color, tag.use_count, tag.created_at, tag.updated_at)
+          `).bind(tag.id, tag.name, tag.color, tag.use_count, tag.created_at, tag.updated_at)
         );
         syncedCount++;
       }
@@ -227,24 +214,21 @@ sync.post('/push', authMiddleware, async (c) => {
       }
     }
     
-    // 4. 推送设置
+    // 4. 推送设置（全局共享）
     if (body.settings && body.settings.length > 0) {
       console.log(`[Sync] 准备推送 ${body.settings.length} 个设置`);
       
       for (const setting of body.settings) {
-        if (setting.user_id !== user.user_id) {
-          console.warn(`[Sync] 跳过非本用户设置: ${setting.key}`);
-          continue;
-        }
+        console.log(`[Sync] 推送设置: ${setting.key}`);
         
         statements.push(
           c.env.DB.prepare(`
-            INSERT INTO user_settings (user_id, key, value, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id, key) DO UPDATE SET
+            INSERT INTO settings (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
               value = excluded.value,
               updated_at = excluded.updated_at
-          `).bind(setting.user_id, setting.key, setting.value, setting.updated_at)
+          `).bind(setting.key, setting.value, setting.updated_at)
         );
         syncedCount++;
       }
@@ -295,36 +279,30 @@ sync.post('/push', authMiddleware, async (c) => {
       
       // 验证数据是否真的插入了
       if (body.assets && body.assets.length > 0) {
-        // 1. 先查询所有资产（不过滤 user_id）
+        // 1. 查询所有资产
         const allAssetsCount = await c.env.DB.prepare(`
           SELECT COUNT(*) as count FROM assets
         `).first<{ count: number }>();
         console.log(`[Sync] 🔍 D1 中所有资产总数: ${allAssetsCount?.count || 0}`);
         
-        // 2. 按 user_id 分组统计
-        const byUser = await c.env.DB.prepare(`
-          SELECT user_id, COUNT(*) as count FROM assets GROUP BY user_id
+        // 2. 按设备分组统计
+        const byDevice = await c.env.DB.prepare(`
+          SELECT created_by_device, COUNT(*) as count FROM assets GROUP BY created_by_device
         `).all();
-        console.log(`[Sync] 🔍 按用户分组:`, byUser.results);
+        console.log(`[Sync] 🔍 按设备分组:`, byDevice.results);
         
-        // 3. 查询当前用户的资产
-        const verifyCount = await c.env.DB.prepare(`
-          SELECT COUNT(*) as count FROM assets WHERE user_id = ?
-        `).bind(user.user_id).first<{ count: number }>();
-        console.log(`[Sync] 🔍 当前用户资产数: ${verifyCount?.count || 0}（user_id=${user.user_id}）`);
-        
-        // 4. 尝试根据 ID 直接查询刚插入的资产
+        // 3. 尝试根据 ID 直接查询刚插入的资产
         if (body.assets.length > 0) {
           const firstAssetId = body.assets[0].id;
           const directQuery = await c.env.DB.prepare(`
-            SELECT id, user_id, file_name, r2_key FROM assets WHERE id = ?
+            SELECT id, file_name, r2_key, created_by_device FROM assets WHERE id = ?
           `).bind(firstAssetId).first();
           console.log(`[Sync] 🔍 根据ID直接查询第一个资产 (${firstAssetId}):`, directQuery);
         }
         
-        // 5. 查看最近的资产（不过滤 user_id）
+        // 4. 查看最近的资产
         const recentAssets = await c.env.DB.prepare(`
-          SELECT id, user_id, file_name, r2_key FROM assets ORDER BY created_at DESC LIMIT 5
+          SELECT id, file_name, r2_key, created_by_device FROM assets ORDER BY created_at DESC LIMIT 5
         `).all();
         console.log(`[Sync] 🔍 最近的5个资产:`, recentAssets.results);
       }
@@ -332,15 +310,8 @@ sync.post('/push', authMiddleware, async (c) => {
       console.log(`[Sync] ⏭️  没有数据需要推送`);
     }
     
-    // 更新用户存储使用量
-    const totalSize = body.assets?.reduce((sum, asset) => sum + asset.file_size, 0) || 0;
-    if (totalSize > 0) {
-      await c.env.DB.prepare(`
-        UPDATE users 
-        SET storage_used = storage_used + ?
-        WHERE user_id = ?
-      `).bind(totalSize, user.user_id).run();
-    }
+    // 注：全局模式不需要按用户更新存储使用量
+    // 存储配额可以通过查询所有资产总大小来计算
     
     const serverTimestamp = now();
     

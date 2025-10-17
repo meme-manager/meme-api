@@ -1,13 +1,13 @@
 import type { CloudflareBindings, RateLimitConfig } from '../types';
 
 /**
- * 限流配置
+ * 限流配置（全局模式）
  */
 export const RATE_LIMITS: RateLimitConfig = {
-  maxAssetsPerUser: 2000,
-  maxStoragePerUser: 1024 * 1024 * 1024, // 1GB
-  maxSharesPerUser: 100,
-  maxSharesPerDay: 10,
+  maxAssets: 10000,  // 全局最大资产数
+  maxStorage: 5 * 1024 * 1024 * 1024, // 5GB 总存储
+  maxShares: 500,  // 全局最大分享数
+  maxSharesPerDay: 50,  // 每天最多创建分享数
   maxRequestsPerIpPerHour: 1000,
   maxShareViewsPerIpPerHour: 100,
   maxViewsPerShare: 10000,
@@ -15,61 +15,61 @@ export const RATE_LIMITS: RateLimitConfig = {
 };
 
 /**
- * 检查用户配额
+ * 检查全局配额
  */
-export async function checkUserQuota(
-  userId: string,
+export async function checkGlobalQuota(
   env: CloudflareBindings
 ): Promise<{ allowed: boolean; reason?: string }> {
   try {
-    // 1. 检查图片数量
+    // 1. 检查全局资产数量
     const assetCount = await env.DB.prepare(
-      'SELECT COUNT(*) as count FROM assets WHERE user_id = ? AND deleted = 0'
-    ).bind(userId).first<{ count: number }>();
+      'SELECT COUNT(*) as count FROM assets WHERE deleted = 0'
+    ).first<{ count: number }>();
     
-    if (assetCount && assetCount.count >= RATE_LIMITS.maxAssetsPerUser) {
+    if (assetCount && assetCount.count >= RATE_LIMITS.maxAssets) {
       return {
         allowed: false,
-        reason: `已达到最大图片数量限制（${RATE_LIMITS.maxAssetsPerUser}张）`
+        reason: `已达到最大资产数量限制（${RATE_LIMITS.maxAssets}张）`
       };
     }
     
-    // 2. 检查存储空间
-    const user = await env.DB.prepare(
-      'SELECT storage_used FROM users WHERE user_id = ?'
-    ).bind(userId).first<{ storage_used: number }>();
+    // 2. 检查全局存储空间
+    const storageResult = await env.DB.prepare(
+      'SELECT SUM(file_size) as total FROM assets WHERE deleted = 0'
+    ).first<{ total: number }>();
     
-    if (user && user.storage_used >= RATE_LIMITS.maxStoragePerUser) {
+    const storageUsed = storageResult?.total || 0;
+    
+    if (storageUsed >= RATE_LIMITS.maxStorage) {
       return {
         allowed: false,
-        reason: `存储空间已满（${formatBytes(RATE_LIMITS.maxStoragePerUser)}）`
+        reason: `存储空间已满（${formatBytes(RATE_LIMITS.maxStorage)}）`
       };
     }
     
-    // 3. 检查分享数量
+    // 3. 检查全局分享数量
     const shareCount = await env.DB.prepare(
-      'SELECT COUNT(*) as count FROM shares WHERE user_id = ?'
-    ).bind(userId).first<{ count: number }>();
+      'SELECT COUNT(*) as count FROM shares'
+    ).first<{ count: number }>();
     
-    if (shareCount && shareCount.count >= RATE_LIMITS.maxSharesPerUser) {
+    if (shareCount && shareCount.count >= RATE_LIMITS.maxShares) {
       return {
         allowed: false,
-        reason: `已达到最大分享数量限制（${RATE_LIMITS.maxSharesPerUser}个）`
+        reason: `已达到最大分享数量限制（${RATE_LIMITS.maxShares}个）`
       };
     }
     
     return { allowed: true };
   } catch (error) {
-    console.error('[RateLimit] 检查用户配额失败:', error);
+    console.error('[RateLimit] 检查全局配额失败:', error);
     return { allowed: true }; // 出错时允许通过
   }
 }
 
 /**
- * 检查每日分享创建限制
+ * 检查每日全局分享创建限制
  */
 export async function checkDailyShareLimit(
-  userId: string,
   env: CloudflareBindings
 ): Promise<{ allowed: boolean; reason?: string }> {
   try {
@@ -77,9 +77,8 @@ export async function checkDailyShareLimit(
     
     const result = await env.DB.prepare(`
       SELECT COUNT(*) as count FROM shares 
-      WHERE user_id = ? 
-      AND DATE(created_at/1000, 'unixepoch') = ?
-    `).bind(userId, today).first<{ count: number }>();
+      WHERE DATE(created_at/1000, 'unixepoch') = ?
+    `).bind(today).first<{ count: number }>();
     
     if (result && result.count >= RATE_LIMITS.maxSharesPerDay) {
       return {

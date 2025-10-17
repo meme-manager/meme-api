@@ -12,6 +12,7 @@ import share from './routes/share';
 import quota from './routes/quota';
 import r2 from './routes/r2';
 import consistency from './routes/consistency';
+import admin from './routes/admin';
 
 const app = new Hono<AppEnv>();
 
@@ -63,6 +64,7 @@ app.route('/share', share);
 app.route('/quota', quota);
 app.route('/r2', r2);
 app.route('/consistency', consistency);
+app.route('/admin', admin);
 
 // 分享预览页面 (GET /s/:shareId)
 app.get('/s/:shareId', async (c) => {

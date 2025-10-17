@@ -56,10 +56,10 @@ r2.get('/*', async (c) => {
  * Body: Binary data
  */
 r2.post('/upload', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   
   try {
-    console.log(`[R2] 上传文件: 用户=${user.user_id}`);
+    console.log(`[R2] 上传文件: 设备=${device.device_id}`);
     
     // 1. 获取文件数据
     const contentType = c.req.header('Content-Type') || 'application/octet-stream';
@@ -75,10 +75,10 @@ r2.post('/upload', authMiddleware, async (c) => {
     
     console.log(`[R2] 文件信息: ${fileName}, ${fileSize} bytes, ${contentType}`);
     
-    // 2. 生成 R2 key
+    // 2. 生成 R2 key（全局共享模式，使用统一路径）
     const ext = fileName.split('.').pop() || 'bin';
-    const r2Key = `${user.user_id}/assets/${contentHash}.${ext}`;
-    const thumbR2Key = `${user.user_id}/thumbs/${contentHash}_256.webp`;
+    const r2Key = `assets/${contentHash}.${ext}`;
+    const thumbR2Key = `thumbs/${contentHash}_256.webp`;
     
     // 3. 上传原图到 R2
     await c.env.R2.put(r2Key, fileData, {
@@ -109,7 +109,7 @@ r2.post('/upload', authMiddleware, async (c) => {
  * POST /r2/batch-check
  */
 r2.post('/batch-check', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   
   try {
     const body = await c.req.json<{ r2_keys: string[] }>();
@@ -173,7 +173,7 @@ r2.post('/batch-check', authMiddleware, async (c) => {
  * GET /r2/download/:key
  */
 r2.get('/download/:key', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   const key = decodeURIComponent(c.req.param('key'));
   
   try {
@@ -205,7 +205,7 @@ r2.get('/download/:key', authMiddleware, async (c) => {
  * DELETE /r2/delete/:key
  */
 r2.delete('/delete/:key', authMiddleware, async (c) => {
-  const user = requireAuth(c);
+  const device = requireAuth(c);
   const key = decodeURIComponent(c.req.param('key'));
   
   try {

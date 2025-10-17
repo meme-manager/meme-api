@@ -13,7 +13,6 @@ export async function generateToken(
   const secretKey = encoder.encode(secret);
   
   const token = await new SignJWT({
-    user_id: payload.user_id,
     device_id: payload.device_id,
   })
     .setProtectedHeader({ alg: 'HS256' })
@@ -38,7 +37,6 @@ export async function verifyToken(
     const { payload } = await jwtVerify(token, secretKey);
     
     return {
-      user_id: payload.user_id as string,
       device_id: payload.device_id as string,
       exp: payload.exp as number,
     };

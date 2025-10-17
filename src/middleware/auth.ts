@@ -27,8 +27,8 @@ export async function authMiddleware(c: Context<AppEnv>, next: () => Promise<voi
     return unauthorized('认证令牌已过期');
   }
   
-  // 将用户信息存储到上下文中
-  c.set('user', payload);
+  // 将设备信息存储到上下文中
+  c.set('device', payload);
   
   await next();
 }
@@ -44,7 +44,7 @@ export async function optionalAuthMiddleware(c: Context<AppEnv>, next: () => Pro
     const payload = await verifyToken(token, secret);
     
     if (payload && payload.exp >= Math.floor(Date.now() / 1000)) {
-      c.set('user', payload);
+      c.set('device', payload);
     }
   }
   
@@ -52,21 +52,21 @@ export async function optionalAuthMiddleware(c: Context<AppEnv>, next: () => Pro
 }
 
 /**
- * 从上下文中获取当前用户
+ * 从上下文中获取当前设备
  */
-export function getCurrentUser(c: Context): JWTPayload | null {
-  return c.get('user') || null;
+export function getCurrentDevice(c: Context): JWTPayload | null {
+  return c.get('device') || null;
 }
 
 /**
  * 要求认证的辅助函数
  */
 export function requireAuth(c: Context): JWTPayload {
-  const user = getCurrentUser(c);
+  const device = getCurrentDevice(c);
   
-  if (!user) {
+  if (!device) {
     throw new Error('未认证');
   }
   
-  return user;
+  return device;
 }

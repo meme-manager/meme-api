@@ -10,7 +10,7 @@ export interface CloudflareBindings {
 
 // Hono 上下文变量类型
 export interface HonoVariables {
-  user?: JWTPayload;
+  device?: JWTPayload;
   [key: string]: any; // 索引签名以兼容 Hono Variables
 }
 
@@ -20,28 +20,27 @@ export type AppEnv = {
   Variables: HonoVariables;
 };
 
-// 用户类型
-export interface User {
-  user_id: string;
-  created_at: number;
-  last_login_at: number;
-  storage_used: number;
+// 服务器配置
+export interface ServerConfig {
+  key: string;
+  value: string;
+  updated_at: number;
+  description?: string;
 }
 
-// 设备类型
+// 设备类型（移除 user_id）
 export interface Device {
   device_id: string;
-  user_id: string;
   device_name: string;
   device_type: string;
   platform: string;
   last_seen_at: number;
+  created_at: number;
 }
 
-// 资产类型
+// 资产类型（移除 user_id）
 export interface Asset {
   id: string;
-  user_id: string;
   content_hash: string;
   file_name: string;
   mime_type: string;
@@ -58,12 +57,12 @@ export interface Asset {
   updated_at: number;
   deleted: number;
   deleted_at: number | null;
+  created_by_device: string | null;  // 创建设备（记录但不限制访问）
 }
 
-// 标签类型
+// 标签类型（移除 user_id）
 export interface Tag {
   id: string;
-  user_id: string;
   name: string;
   color: string | null;
   use_count: number;
@@ -78,18 +77,17 @@ export interface AssetTag {
   created_at: number;
 }
 
-// 用户设置
-export interface UserSetting {
-  user_id: string;
+// 全局设置（替代用户设置）
+export interface Setting {
   key: string;
   value: string;
   updated_at: number;
+  description?: string;
 }
 
-// 分享类型
+// 分享类型（移除 user_id）
 export interface Share {
   share_id: string;
-  user_id: string;
   title: string | null;
   description: string | null;
   expires_at: number | null;
@@ -99,6 +97,7 @@ export interface Share {
   download_count: number;
   created_at: number;
   updated_at: number;
+  created_by_device: string | null;  // 创建设备
 }
 
 // 分享资产
@@ -108,9 +107,8 @@ export interface ShareAsset {
   display_order: number;
 }
 
-// JWT Payload
+// JWT Payload（移除 user_id，只保留 device_id）
 export interface JWTPayload {
-  user_id: string;
   device_id: string;
   exp: number;
 }
@@ -132,7 +130,7 @@ export interface SyncPullResponse {
   assets: Asset[];
   tags: Tag[];
   asset_tags: AssetTag[];
-  settings: UserSetting[];
+  settings: Setting[];
   server_timestamp: number;
   total_count: number;
 }
@@ -141,7 +139,7 @@ export interface SyncPushRequest {
   assets: Asset[];
   tags: Tag[];
   asset_tags: AssetTag[];
-  settings: UserSetting[];
+  settings: Setting[];
 }
 
 export interface SyncPushResponse {
@@ -182,7 +180,7 @@ export interface GetShareResponse {
   view_count: number;
 }
 
-// 配额信息
+// 配额信息（全局配额，所有设备共享）
 export interface QuotaInfo {
   assets: {
     used: number;
@@ -201,14 +199,41 @@ export interface QuotaInfo {
   };
 }
 
-// 限流配置
+// 限流配置（全局限制）
 export interface RateLimitConfig {
-  maxAssetsPerUser: number;
-  maxStoragePerUser: number;
-  maxSharesPerUser: number;
+  maxAssets: number;
+  maxStorage: number;
+  maxShares: number;
   maxSharesPerDay: number;
   maxRequestsPerIpPerHour: number;
   maxShareViewsPerIpPerHour: number;
   maxViewsPerShare: number;
   maxDownloadsPerShare: number;
+}
+
+// 认证请求
+export interface AuthRequest {
+  device_id?: string;
+  device_name: string;
+  device_type: string;
+  platform: string;
+  sync_password?: string;  // 可选的同步密码
+}
+
+export interface AuthResponse {
+  device_id: string;
+  token: string;
+  expires_at: number;
+  server_name: string;
+  require_sync_password: boolean;
+}
+
+// 管理认证
+export interface AdminAuthRequest {
+  admin_password: string;
+}
+
+export interface AdminAuthResponse {
+  token: string;
+  expires_at: number;
 }
