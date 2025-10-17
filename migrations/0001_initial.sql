@@ -8,9 +8,9 @@ CREATE TABLE server_config (
 
 -- 初始化配置
 INSERT INTO server_config (key, value, updated_at, description) VALUES
-    ('sync_password_hash', '', 0, '同步密码哈希（SHA-256），为空则无需密码'),
+    ('sync_password_hash', '', 0, '同步密码哈希（SHA-256），必须设置才能使用云同步'),
     ('admin_password_hash', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 0, '管理密码哈希（SHA-256），默认: admin'),
-    ('require_sync_password', 'false', 0, '是否需要同步密码'),
+    ('require_sync_password', 'true', 0, '是否需要同步密码（已废弃，始终为 true）'),
     ('server_name', 'Meme Manager', 0, '服务器名称');
 
 -- 设备表（无 user_id）

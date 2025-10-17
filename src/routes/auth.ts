@@ -29,32 +29,29 @@ auth.post('/device-register', async (c) => {
     
     console.log(`[Auth] 设备注册/登录: ${deviceId} (${body.device_name})`);
     
-    // 1. 检查是否需要同步密码
-    const requireSyncPassword = await c.env.DB.prepare(
-      "SELECT value FROM server_config WHERE key = 'require_sync_password'"
+    // 1. 强制验证同步密码（防止未授权设备连接）
+    if (!body.sync_password) {
+      return error('必须提供同步密码。请联系管理员获取密码。', 401);
+    }
+    
+    const storedHash = await c.env.DB.prepare(
+      "SELECT value FROM server_config WHERE key = 'sync_password_hash'"
     ).first<{ value: string }>();
     
-    const needsPassword = requireSyncPassword?.value === 'true';
-    
-    if (needsPassword) {
-      // 验证同步密码
-      if (!body.sync_password) {
-        return error('需要同步密码', 401);
-      }
-      
-      const storedHash = await c.env.DB.prepare(
-        "SELECT value FROM server_config WHERE key = 'sync_password_hash'"
-      ).first<{ value: string }>();
-      
-      const inputHash = await hashPassword(body.sync_password);
-      
-      if (!storedHash || storedHash.value !== inputHash) {
-        console.log(`[Auth] ❌ 同步密码错误`);
-        return error('同步密码错误', 401);
-      }
-      
-      console.log(`[Auth] ✅ 同步密码验证通过`);
+    // 检查是否已设置同步密码
+    if (!storedHash || !storedHash.value) {
+      console.log(`[Auth] ❌ 服务器未设置同步密码`);
+      return error('服务器未设置同步密码。请管理员先在管理面板中设置同步密码。', 500);
     }
+    
+    const inputHash = await hashPassword(body.sync_password);
+    
+    if (storedHash.value !== inputHash) {
+      console.log(`[Auth] ❌ 同步密码错误`);
+      return error('同步密码错误', 401);
+    }
+    
+    console.log(`[Auth] ✅ 同步密码验证通过`);
     
     // 2. 检查设备是否已存在
     const existingDevice = await c.env.DB.prepare(
@@ -100,7 +97,7 @@ auth.post('/device-register', async (c) => {
       token,
       expires_at: expiresAt,
       server_name: serverName?.value || 'Meme Manager',
-      require_sync_password: needsPassword,
+      require_sync_password: true, // 始终要求同步密码
     };
     
     return success(response, existingDevice ? '登录成功' : '注册成功');
